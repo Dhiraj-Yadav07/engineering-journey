@@ -54,7 +54,7 @@ Projects also provide a natural boundary for:
 
 ## Evidence
 
-Screenshots demonstrating the project exploration are maintained separately (./screenshots/ProjectSetup.png)
+Screenshots demonstrating the project exploration are maintained separately ![Project Setup Screenshot](./screenshots/ProjectSetup.png)
 
 ## Next
 

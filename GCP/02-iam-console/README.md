@@ -36,7 +36,7 @@ Resource
 
 # Evidences
 
-(./screenshots/IAM_LabCompletion.png)
+![IAM Lab Completion Screenshot](./screenshots/IAM_LabCompletion.png)
 
 ## References
 
