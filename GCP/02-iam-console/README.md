@@ -34,6 +34,10 @@ Resource
 * IAM policies can be inherited through the resource hierarchy.
 * Prefer least-privilege roles over broad access.
 
+# Evidences
+
+(./screenshots/IAM_LabCompletion.png)
+
 ## References
 
 * [Google Cloud IAM](https://docs.cloud.google.com/iam/docs)

@@ -54,8 +54,7 @@ Projects also provide a natural boundary for:
 
 ## Evidence
 
-Screenshots demonstrating the project configuration and console
-exploration are maintained separately where appropriate.
+Screenshots demonstrating the project exploration are maintained separately (./screenshots/ProjectSetup.png)
 
 ## Next
 
