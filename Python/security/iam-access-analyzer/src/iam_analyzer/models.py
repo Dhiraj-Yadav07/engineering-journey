@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime
 
 
 class PrincipalType(Enum):
@@ -37,6 +38,9 @@ class Policy:
     resource: Resource
     action: Action
     effect: Effect
+    condition_key: str | None = None
+    condition_value: str | None = None
+    expires_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,7 @@ class AccessRequest:
     principal: Principal
     resource: Resource
     action: Action
+    context: dict[str, str]
 
 
 @dataclass(frozen=True)

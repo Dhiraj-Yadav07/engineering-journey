@@ -1,3 +1,8 @@
+from datetime import datetime
+
+from iam_analyzer.conditions import condition_matches
+from iam_analyzer.expiration import policy_is_expired
+from iam_analyzer.matching import action_matches
 from iam_analyzer.models import (
     AccessDecision,
     AccessRequest,
@@ -7,8 +12,17 @@ from iam_analyzer.models import (
 
 
 class AccessAnalyzer:
-    def __init__(self, policies: list[Policy]):
+    def __init__(
+        self,
+        policies: list[Policy],
+        current_time: datetime | None = None,
+    ):
         self.policies = policies
+        self.current_time = (
+            current_time
+            if current_time is not None
+            else datetime.now()
+        )
 
     def analyze(self, request: AccessRequest) -> AccessDecision:
         matching_policies = []
@@ -17,8 +31,25 @@ class AccessAnalyzer:
             if (
                 policy.principal == request.principal
                 and policy.resource == request.resource
-                and policy.action == request.action
+                and action_matches(
+                    policy.action.name,
+                    request.action.name,
+                )
             ):
+                if policy_is_expired(
+                    policy.expires_at,
+                    self.current_time,
+                ):
+                    continue
+
+                if policy.condition_key is not None:
+                    if not condition_matches(
+                        policy.condition_key,
+                        policy.condition_value,
+                        request.context,
+                    ):
+                        continue
+
                 matching_policies.append(policy)
 
         for policy in matching_policies:
