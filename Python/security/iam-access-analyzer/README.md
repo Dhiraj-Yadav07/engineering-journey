@@ -1,6 +1,6 @@
-# IAM Access Analyzer — Policy Evaluator v0.2
+# IAM Access Analyzer — Policy Evaluator v0.2 + FastAPI API
 
-A Python-based IAM policy evaluation engine that models principals, resources, actions, policies, contextual conditions, wildcard actions, policy expiration, and explicit deny precedence.
+A Python-based IAM policy evaluation engine with a FastAPI REST interface. The project models principals, resources, actions, policies, contextual conditions, wildcard actions, policy expiration, and explicit deny precedence, and exposes the authorization evaluator through a documented HTTP API.
 
 This project is part of the Engineering Journey security and IAM portfolio.
 
@@ -98,15 +98,20 @@ iam-access-analyzer/
 │
 ├── src/
 │   └── iam_analyzer/
-│       ├── analyzer.py
-│       ├── conditions.py
-│       ├── expiration.py
-│       ├── matching.py
-│       └── models.py
+│       ├── analyzer.py          # Core policy evaluation engine
+│       ├── api.py              # FastAPI application and REST endpoint
+│       ├── api_models.py       # Pydantic request models
+│       ├── conditions.py       # IAM condition evaluation
+│       ├── expiration.py       # Policy expiration logic
+│       ├── matching.py         # Exact/wildcard action matching
+│       └── models.py            # Domain dataclasses and enums
 │
 └── tests/
-    └── test_analyzer.py
+    ├── test_analyzer.py        # Policy evaluator tests
+    └── test_api.py             # FastAPI endpoint tests
 ```
+
+`.venv/`, `__pycache__/`, and pytest cache files are excluded through `.gitignore`.
 
 ---
 
@@ -507,7 +512,7 @@ Explicit DENY           ✗
 
 # Testing
 
-The project uses `pytest`.
+The project uses `pytest` for both unit-level evaluator testing and API-level testing.
 
 Run:
 
@@ -518,12 +523,12 @@ pytest
 Current test evidence:
 
 ```text
-23 tests collected
-23 passed
+27 tests collected
+27 passed
 0 failed
 ```
 
-Test categories include:
+The test suite covers:
 
 ```text
 ✓ Matching ALLOW policy
@@ -540,9 +545,13 @@ Test categories include:
 ✓ Wildcard + expiration
 ✓ Explicit DENY + wildcard ALLOW
 ✓ Expired DENY + valid ALLOW
+✓ FastAPI health endpoint
+✓ FastAPI access-analysis endpoint
+✓ API validation behavior
+✓ API ALLOW / DENY behavior
 ```
 
----
+The API tests use FastAPI's test client and exercise the endpoint without requiring a running Uvicorn server.
 
 # Installation
 
@@ -558,23 +567,187 @@ Activate it:
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install the package:
+Install the project:
 
 ```powershell
 python -m pip install -e .
 ```
 
-Install pytest:
+Install the development/runtime dependencies used by this build:
 
 ```powershell
-python -m pip install pytest
+python -m pip install pytest fastapi uvicorn
 ```
 
-Run tests:
+Verify FastAPI:
+
+```powershell
+python -c "import fastapi; print(fastapi.__version__)"
+```
+
+Run the evaluator/API test suite:
 
 ```powershell
 pytest
 ```
+
+---
+
+# FastAPI REST API
+
+The policy evaluator is exposed through a REST API implemented with FastAPI.
+
+## Start the API
+
+From the project root:
+
+```powershell
+python -m uvicorn iam_analyzer.api:app --reload
+```
+
+The development server starts on:
+
+```text
+http://127.0.0.1:8000
+```
+
+`--reload` enables automatic server reload when source files change. The terminal remains occupied by the running Uvicorn process; this is expected. Stop it with `Ctrl+C`.
+
+## Health Check
+
+Endpoint:
+
+```http
+GET /health
+```
+
+PowerShell:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## Analyze Access
+
+Endpoint:
+
+```http
+POST /analyze-access
+Content-Type: application/json
+```
+
+Example request:
+
+```json
+{
+  "principal": {
+    "id": "user:alice@example.com",
+    "type": "user"
+  },
+  "resource": {
+    "id": "bucket:prod-data",
+    "type": "storage_bucket"
+  },
+  "action": {
+    "name": "storage.objects.get"
+  },
+  "context": {}
+}
+```
+
+Example response:
+
+```json
+{
+  "effect": "allow",
+  "reason": "Matching allow policy found"
+}
+```
+
+A non-matching principal/request is evaluated through the same policy engine and can return:
+
+```json
+{
+  "effect": "deny",
+  "reason": "No matching policy found"
+}
+```
+
+## OpenAPI / Swagger Documentation
+
+FastAPI automatically exposes the OpenAPI contract and interactive documentation.
+
+Swagger UI:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Raw OpenAPI specification:
+
+```text
+http://127.0.0.1:8000/openapi.json
+```
+
+The Swagger UI was validated manually during this build, including successful ALLOW and DENY access-analysis requests.
+
+## API Request Validation
+
+Pydantic models validate incoming JSON before it reaches the IAM evaluator.
+
+The API request model contains:
+
+```text
+AccessRequestBody
+├── principal
+│   ├── id
+│   └── type
+├── resource
+│   ├── id
+│   └── type
+├── action
+│   └── name
+└── context
+```
+
+Invalid or missing request fields are rejected by FastAPI with an HTTP `422` validation response.
+
+---
+
+# API Design Boundary
+
+The API layer deliberately separates HTTP concerns from authorization logic:
+
+```text
+HTTP JSON
+   |
+   v
+Pydantic models
+   |
+   v
+Internal IAM dataclasses
+   |
+   v
+AccessAnalyzer
+   |
+   v
+AccessDecision
+   |
+   v
+HTTP JSON response
+```
+
+This keeps the core evaluator independent of FastAPI and makes the policy engine easier to test and reuse.
+
+The current API is a learning/portfolio interface rather than a production policy-management service. It does not yet provide a persistent policy store, authentication, authorization of API callers, or policy-management endpoints.
 
 ---
 
@@ -585,9 +758,10 @@ Developed and tested with:
 ```text
 Python 3.14.7
 pytest 9.1.1
+FastAPI 0.141.1
+Uvicorn 0.52.4
+Pydantic 2.13.4
 ```
-
----
 
 # Security Design Principles Demonstrated
 
@@ -649,21 +823,24 @@ These are potential future extensions.
 
 # Future Roadmap
 
-## v0.3
+The current objective is complete: the evaluator has been exposed through a FastAPI REST endpoint with generated OpenAPI documentation.
 
-Potential enhancements:
+## v0.3 / API Enhancements
+
+Potential next enhancements:
 
 ```text
 JSON policy parser
+Policy input through API
+Policy collections / policy store
 Multiple condition operators
 CIDR/IP conditions
 Resource wildcard matching
 Multiple principals
-Policy collections
 Structured decision reasons
 ```
 
-## v0.4
+## v0.4 / Cloud IAM Modeling
 
 Potential cloud IAM modeling:
 
@@ -671,13 +848,13 @@ Potential cloud IAM modeling:
 Identity policies
 Resource policies
 Role assumption
-Groups
+Groups and group membership
 Permission boundaries
 ```
 
-## v0.5
+## v0.5 / Enterprise IAM Simulation
 
-Potential enterprise IAM simulation:
+Potential enterprise capabilities:
 
 ```text
 AWS IAM semantics
@@ -686,13 +863,14 @@ Policy inheritance
 Organization constraints
 Policy analysis/reporting
 Access graph visualization
+Authentication and API authorization
 ```
 
 ---
 
 # Portfolio Outcome
 
-This project demonstrates practical Python implementation of an IAM authorization engine.
+This project demonstrates practical Python implementation of an IAM authorization engine and its exposure as a REST service.
 
 It combines:
 
@@ -716,6 +894,14 @@ Context-aware access control
 Time-based authorization
 +
 Automated testing
++
+FastAPI REST API
++
+Pydantic request validation
++
+Uvicorn application serving
++
+OpenAPI / Swagger documentation
 ```
 
 The project is intentionally designed as an incremental engineering exercise:
@@ -734,9 +920,55 @@ Expiration
 +
 Explicit DENY precedence
 +
-23 automated tests
+23 evaluator tests
+        |
+        v
+API Build
+FastAPI REST endpoint
++
+Pydantic request validation
++
+OpenAPI / Swagger docs
++
+API tests
++
+27 total automated tests
         |
         v
 Future
 Enterprise IAM policy simulation
+```
+
+## Current Build Evidence
+
+```text
+Core policy evaluator
+        ✓
+
+Wildcard IAM action matching
+        ✓
+
+IAM-style conditions
+        ✓
+
+Policy expiration
+        ✓
+
+Explicit DENY precedence
+        ✓
+
+Deterministic time testing
+        ✓
+
+FastAPI REST endpoint
+        ✓
+
+Pydantic request validation
+        ✓
+
+Swagger UI / OpenAPI
+        ✓
+
+27 automated tests passing
+        ✓
 ```
