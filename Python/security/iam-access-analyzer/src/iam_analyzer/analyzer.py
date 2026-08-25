@@ -5,6 +5,7 @@ from iam_analyzer.audit_logger import AuditLogger
 from iam_analyzer.audit import AuditEvent
 from iam_analyzer.expiration import policy_is_expired
 from iam_analyzer.matching import action_matches
+from iam_analyzer.risk import calculate_risk_score
 from iam_analyzer.models import (
     AccessDecision,
     AccessRequest,
@@ -48,6 +49,7 @@ class AccessAnalyzer:
         )
 
     def analyze(self, request: AccessRequest) -> AccessDecision:
+        risk_score = calculate_risk_score(request.action)
         matching_policies = []
 
         for policy in self.policies:
@@ -80,6 +82,7 @@ class AccessAnalyzer:
                 decision = AccessDecision(
                     effect=Effect.DENY,
                     reason="Explicit deny policy matched",
+                    risk_score=risk_score,
                 )
                 self._record_audit_event(request, decision)
                 return decision
@@ -88,6 +91,7 @@ class AccessAnalyzer:
             decision = AccessDecision(
                 effect=Effect.ALLOW,
                 reason="Matching allow policy found",
+                risk_score=risk_score,
             )
             self._record_audit_event(request, decision)
             return decision
@@ -95,6 +99,7 @@ class AccessAnalyzer:
         decision = AccessDecision(
             effect=Effect.DENY,
             reason="No matching policy found",
+            risk_score=risk_score,
         )
         self._record_audit_event(request, decision)
         return decision

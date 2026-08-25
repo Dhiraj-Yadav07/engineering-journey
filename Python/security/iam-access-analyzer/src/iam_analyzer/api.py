@@ -86,4 +86,5 @@ def analyze_access(request: AccessRequestBody):
     return {
         "effect": decision.effect.value,
         "reason": decision.reason,
+        "risk_score": decision.risk_score,
     }

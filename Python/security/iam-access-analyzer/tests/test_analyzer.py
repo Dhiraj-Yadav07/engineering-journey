@@ -678,3 +678,41 @@ def test_analyzer_records_audit_event():
     assert event.action == "storage.objects.get"
     assert event.effect == "allow"
     assert event.reason == "Matching allow policy found"
+
+def test_analyzer_includes_risk_score():
+    principal = Principal(
+        id="user:alice@example.com",
+        type=PrincipalType.USER,
+    )
+
+    resource = Resource(
+        id="bucket:prod-data",
+        type="storage_bucket",
+    )
+
+    action = Action(
+        name="storage.objects.delete",
+    )
+
+    policy = Policy(
+        principal=principal,
+        resource=resource,
+        action=action,
+        effect=Effect.ALLOW,
+    )
+
+    request = AccessRequest(
+        principal=principal,
+        resource=resource,
+        action=action,
+        context={},
+    )
+
+    analyzer = AccessAnalyzer(
+        policies=[policy],
+    )
+
+    decision = analyzer.analyze(request)
+
+    assert decision.effect == Effect.ALLOW
+    assert decision.risk_score == 70

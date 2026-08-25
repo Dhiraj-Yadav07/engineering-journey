@@ -25,3 +25,4 @@ class AccessRequestBody(BaseModel):
 class AccessDecisionResponse(BaseModel):
     effect: str
     reason: str
+    risk_score: int
