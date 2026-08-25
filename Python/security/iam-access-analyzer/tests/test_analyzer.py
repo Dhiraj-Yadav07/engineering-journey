@@ -13,6 +13,7 @@ from iam_analyzer.conditions import condition_matches
 from iam_analyzer.matching import action_matches
 from datetime import datetime
 from iam_analyzer.expiration import policy_is_expired
+from iam_analyzer.audit_logger import AuditLogger
 
 
 def test_allow_when_matching_policy_exists():
@@ -627,3 +628,53 @@ def test_expired_deny_does_not_override_valid_allow():
     decision = analyzer.analyze(request)
 
     assert decision.effect == Effect.ALLOW
+
+def test_analyzer_records_audit_event():
+    principal = Principal(
+        id="user:alice@example.com",
+        type=PrincipalType.USER,
+    )
+
+    resource = Resource(
+        id="bucket:prod-data",
+        type="storage_bucket",
+    )
+
+    action = Action(
+        name="storage.objects.get",
+    )
+
+    policy = Policy(
+        principal=principal,
+        resource=resource,
+        action=action,
+        effect=Effect.ALLOW,
+    )
+
+    request = AccessRequest(
+        principal=principal,
+        resource=resource,
+        action=action,
+        context={},
+    )
+
+    logger = AuditLogger()
+
+    analyzer = AccessAnalyzer(
+        policies=[policy],
+        audit_logger=logger,
+    )
+
+    decision = analyzer.analyze(request)
+
+    assert decision.effect == Effect.ALLOW
+
+    assert len(logger.events) == 1
+
+    event = logger.events[0]
+
+    assert event.principal == "user:alice@example.com"
+    assert event.resource == "bucket:prod-data"
+    assert event.action == "storage.objects.get"
+    assert event.effect == "allow"
+    assert event.reason == "Matching allow policy found"
