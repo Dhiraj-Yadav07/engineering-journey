@@ -1,6 +1,8 @@
-# IAM Access Analyzer — Policy Evaluator v0.2 + FastAPI API
+# IAM Access Analyzer — Security Analyzer v0.3 + FastAPI API
 
-A Python-based IAM policy evaluation engine with a FastAPI REST interface. The project models principals, resources, actions, policies, contextual conditions, wildcard actions, policy expiration, and explicit deny precedence, and exposes the authorization evaluator through a documented HTTP API.
+A Python-based IAM authorization and security analysis engine with a FastAPI REST interface. The project models principals, resources, actions, policies, contextual conditions, wildcard actions, policy expiration, explicit deny precedence, audit logging, risk scoring, and privileged access detection.
+
+The analyzer exposes authorization decisions through a documented HTTP API and enriches those decisions with security-oriented metadata.
 
 This project is part of the Engineering Journey security and IAM portfolio.
 
@@ -12,6 +14,14 @@ Build a simplified IAM policy evaluator capable of answering:
 
 > "Is this principal allowed to perform this action on this resource under the current context and time?"
 
+The v0.3 security build extends that authorization decision with:
+
+- Audit event recording
+- Action-based risk scoring
+- Privileged access detection
+- Security metadata returned through the REST API
+- Automated regression coverage for all previous capabilities
+
 Example:
 
 ```text
@@ -22,21 +32,28 @@ Resource:
 bucket:prod-data
 
 Action:
-storage.objects.get
+storage.objects.delete
 
 Context:
 environment=production
 
 Result:
 ALLOW
+
+Risk score:
+70
+
+Privileged:
+false
 ```
 
 ---
 
-## v0.2 Capabilities
+# v0.3 Security Capabilities
 
-The evaluator supports:
+The analyzer currently supports:
 
+### Authorization
 - Principal matching
 - Resource matching
 - Exact action matching
@@ -44,50 +61,140 @@ The evaluator supports:
 - IAM-style contextual conditions
 - Policy expiration
 - Explicit DENY precedence
+- Default deny behavior
 - Deterministic time-based testing
-- Automated pytest coverage
 
----
+### Security Analysis
+- Audit event generation
+- In-memory audit logging
+- Action-based risk scoring
+- Privileged access detection
+- Security metadata attached to access decisions
+- Risk score exposed through the API
+- Privileged flag exposed through the API
 
-## Architecture
+### API
+- FastAPI REST endpoint
+- Pydantic request/response validation
+- OpenAPI schema
+- Swagger UI
+- Health endpoint
+- Access-analysis endpoint
+
+### Testing
+- Unit tests for authorization logic
+- Unit tests for audit models
+- Unit tests for audit logging
+- Unit tests for risk scoring
+- Unit tests for privileged access detection
+- API tests
+- Full regression suite
+
+Current build evidence:
 
 ```text
-                    AccessRequest
-                         |
-                         v
-                +------------------+
-                |  AccessAnalyzer   |
-                +------------------+
-                         |
-          +--------------+--------------+
-          |              |              |
-          v              v              v
-   Principal/      Action Matching   Expiration
-    Resource       Exact/Wildcard      Check
-    Matching
-          |              |              |
-          +--------------+--------------+
-                         |
-                         v
-                    Conditions
-                         |
-                         v
-                Matching Policies
-                         |
-                  +------+------+
-                  |             |
-                  v             v
-               DENY          ALLOW
-                  |
-                  +------+
-                         |
-                         v
-                  Final Decision
+41 tests collected
+41 passed
+0 failed
 ```
 
 ---
 
-## Project Structure
+# Architecture
+
+Two architecture diagrams are maintained with this project:
+
+```text
+docs/
+└── architecture/
+    ├── iam-access-analyzer-hld.png
+    └── iam-access-analyzer-lld.png
+```
+
+The diagrams are intended to document the application independently from the README.
+
+## High-Level Architecture
+
+The HLD shows the major application boundaries:
+
+```text
+                    Client
+                      |
+                      v
+              +---------------+
+              |   FastAPI     |
+              | REST API      |
+              +---------------+
+                      |
+                      v
+              +---------------+
+              | AccessAnalyzer|
+              +---------------+
+                      |
+       +--------------+--------------+
+       |              |              |
+       v              v              v
+ Authorization    Risk Analysis   Privileged
+ Evaluation       / Scoring       Detection
+       |              |              |
+       +--------------+--------------+
+                      |
+                      v
+                AccessDecision
+                      |
+          +-----------+-----------+
+          |           |           |
+          v           v           v
+       Effect      Risk Score   Privileged
+       /Reason                   Flag
+                      |
+                      v
+                Audit Logger
+```
+
+The application deliberately separates the HTTP interface from the authorization/security analysis domain.
+
+---
+
+# Low-Level Architecture
+
+The LLD represents the Python module-level design:
+
+```text
+FastAPI
+   |
+   v
+api.py
+   |
+   +----> api_models.py
+   |
+   v
+AccessAnalyzer
+   |
+   +----> matching.py
+   +----> conditions.py
+   +----> expiration.py
+   +----> risk.py
+   +----> privileged.py
+   +----> audit.py
+   +----> audit_logger.py
+   |
+   v
+models.py
+   |
+   +----> AccessRequest
+   +----> AccessDecision
+   +----> Principal
+   +----> Resource
+   +----> Action
+   +----> Policy
+```
+
+The core analyzer remains independent of FastAPI.
+
+---
+
+# Project Structure
 
 ```text
 iam-access-analyzer/
@@ -96,28 +203,42 @@ iam-access-analyzer/
 ├── pyproject.toml
 ├── README.md
 │
+├── docs/
+│   └── architecture/
+│       ├── iam-access-analyzer-hld.png
+│       └── iam-access-analyzer-lld.png
+│
 ├── src/
 │   └── iam_analyzer/
-│       ├── analyzer.py          # Core policy evaluation engine
+│       ├── __init__.py
+│       ├── analyzer.py          # Core authorization/security evaluation
 │       ├── api.py              # FastAPI application and REST endpoint
-│       ├── api_models.py       # Pydantic request models
-│       ├── conditions.py       # IAM condition evaluation
+│       ├── api_models.py       # Pydantic request/response models
+│       ├── audit.py             # Audit event domain model
+│       ├── audit_logger.py      # In-memory audit event logger
+│       ├── conditions.py        # IAM condition evaluation
 │       ├── expiration.py       # Policy expiration logic
 │       ├── matching.py         # Exact/wildcard action matching
-│       └── models.py            # Domain dataclasses and enums
+│       ├── models.py            # Domain dataclasses and enums
+│       ├── privileged.py        # Privileged action detection
+│       └── risk.py              # Action risk scoring
 │
 └── tests/
-    ├── test_analyzer.py        # Policy evaluator tests
-    └── test_api.py             # FastAPI endpoint tests
+    ├── test_analyzer.py         # Authorization/security analyzer tests
+    ├── test_api.py              # FastAPI endpoint tests
+    ├── test_audit.py             # AuditEvent tests
+    ├── test_audit_logger.py      # AuditLogger tests
+    ├── test_privileged.py        # Privileged detection tests
+    └── test_risk.py              # Risk scoring tests
 ```
 
 `.venv/`, `__pycache__/`, and pytest cache files are excluded through `.gitignore`.
 
 ---
 
-## Data Model
+# Data Model
 
-### Principal
+## Principal
 
 Represents the identity requesting access.
 
@@ -139,7 +260,7 @@ Principal(
 )
 ```
 
-### Resource
+## Resource
 
 Represents the protected resource.
 
@@ -152,7 +273,7 @@ Resource(
 )
 ```
 
-### Action
+## Action
 
 Represents the operation being requested.
 
@@ -164,7 +285,7 @@ Action(
 )
 ```
 
-### Policy
+## Policy
 
 A policy connects a principal, resource, action, and authorization effect.
 
@@ -187,7 +308,7 @@ condition_value
 expires_at
 ```
 
-### AccessRequest
+## AccessRequest
 
 Represents an authorization request.
 
@@ -202,7 +323,7 @@ AccessRequest(
 )
 ```
 
-### AccessDecision
+## AccessDecision
 
 Represents the evaluator result:
 
@@ -211,7 +332,15 @@ ALLOW
 DENY
 ```
 
-along with a reason explaining the decision.
+along with:
+
+```text
+reason
+risk_score
+privileged
+```
+
+The decision therefore combines the authorization outcome with security-analysis metadata.
 
 ---
 
@@ -237,7 +366,17 @@ The evaluator processes policies in the following order:
 8. ALLOW if a matching policy exists
        |
 9. Otherwise DENY
+       |
+10. Calculate risk score
+       |
+11. Detect privileged access
+       |
+12. Record audit event
+       |
+13. Return AccessDecision
 ```
+
+The security enrichment is performed as part of the analyzer's final decision path so that the API and future consumers receive consistent metadata.
 
 ---
 
@@ -324,7 +463,7 @@ context={
 
 the policy does not match.
 
-Missing conditions also fail closed:
+Missing conditions fail closed:
 
 ```text
 Missing condition
@@ -377,6 +516,8 @@ Policy is ignored
 
 Expired policies cannot grant access.
 
+An expired DENY also cannot override a currently valid ALLOW.
+
 ---
 
 # Explicit DENY Precedence
@@ -414,26 +555,6 @@ This mirrors an important IAM authorization concept used in cloud security syste
 
 ---
 
-# Expired Policies
-
-Expired policies are ignored during policy matching.
-
-For example:
-
-```text
-ALLOW policy
-expires: 2026-08-20
-
-Current time:
-2026-08-25
-```
-
-The policy no longer participates in the authorization decision.
-
-This also means an expired DENY cannot override a currently valid ALLOW.
-
----
-
 # Deterministic Time Testing
 
 The evaluator accepts an optional `current_time`:
@@ -448,6 +569,203 @@ AccessAnalyzer(
 This makes expiration behavior deterministic and avoids tests depending on the real system clock.
 
 When no `current_time` is supplied, the evaluator uses the current system time.
+
+---
+
+# Audit Logging
+
+v0.3 introduces an explicit audit model and audit logger.
+
+## AuditEvent
+
+Each authorization decision can produce an audit event containing:
+
+```text
+timestamp
+principal
+resource
+action
+effect
+reason
+```
+
+Conceptually:
+
+```python
+AuditEvent(
+    timestamp=...,
+    principal="user:alice@example.com",
+    resource="bucket:prod-data",
+    action="storage.objects.delete",
+    effect="allow",
+    reason="Matching allow policy found",
+)
+```
+
+## AuditLogger
+
+The current implementation provides an in-memory logger:
+
+```python
+logger = AuditLogger()
+
+logger.record(event)
+```
+
+Events are retained in:
+
+```python
+logger.events
+```
+
+This provides a deterministic and testable foundation for future persistence or integration with an enterprise logging platform.
+
+### Important design boundary
+
+The current logger is intentionally lightweight. It is not a production SIEM, durable event store, or centralized audit backend.
+
+Potential future integrations include:
+
+```text
+Cloud Logging
+CloudWatch
+Splunk
+Elastic
+OpenSearch
+Kafka
+Database / event store
+```
+
+---
+
+# Risk Scoring
+
+v0.3 introduces action-based risk scoring.
+
+The current scoring model is intentionally simple and deterministic.
+
+| Action category | Example | Score |
+|---|---|---:|
+| Read | `storage.objects.get` | 10 |
+| Create | `storage.objects.create` | 40 |
+| Delete | `storage.objects.delete` | 70 |
+| IAM operation | `iam.roles.update` | 70 |
+| Other | unmatched action | 20 |
+
+The scoring function is implemented in:
+
+```text
+src/iam_analyzer/risk.py
+```
+
+Example:
+
+```python
+action = Action(
+    name="storage.objects.delete",
+)
+
+score = calculate_risk_score(action)
+
+assert score == 70
+```
+
+The current model is intentionally a baseline rather than a formal enterprise risk engine.
+
+Future scoring can incorporate additional dimensions such as:
+
+```text
+Resource sensitivity
+Environment
+Principal type
+Production vs development
+Data classification
+Privilege level
+Action frequency
+Policy age
+Access path
+Anomaly indicators
+```
+
+---
+
+# Privileged Access Detection
+
+v0.3 introduces privileged access detection.
+
+The detection logic is implemented in:
+
+```text
+src/iam_analyzer/privileged.py
+```
+
+The analyzer evaluates the requested action and determines whether it represents privileged access.
+
+Example concept:
+
+```python
+is_privileged_action(
+    Action(name="iam.roles.update")
+)
+```
+
+returns:
+
+```text
+True
+```
+
+A normal read operation such as:
+
+```text
+storage.objects.get
+```
+
+is not considered privileged by the current baseline rules.
+
+The objective is to distinguish ordinary resource access from operations that can materially change IAM configuration or security posture.
+
+This is a deliberately small policy engine at v0.3 and can be expanded later with a richer privileged-action taxonomy.
+
+---
+
+# Security Decision Model
+
+A v0.3 decision can be represented conceptually as:
+
+```text
+                    AccessRequest
+                         |
+                         v
+                +------------------+
+                | AccessAnalyzer    |
+                +------------------+
+                         |
+        +----------------+----------------+
+        |                |                |
+        v                v                v
+ Authorization      Risk Scoring    Privileged Detection
+        |                |                |
+        +----------------+----------------+
+                         |
+                         v
+                  AccessDecision
+                         |
+       +-----------------+-----------------+
+       |                 |                 |
+       v                 v                 v
+    Effect           Risk Score       Privileged
+       |                 |                 |
+       +-----------------+-----------------+
+                         |
+                         v
+                    AuditEvent
+                         |
+                         v
+                    AuditLogger
+```
+
+This design keeps authorization, security classification, and audit recording logically distinct while allowing the analyzer to return a single coherent security decision.
 
 ---
 
@@ -485,7 +803,7 @@ Resource:
 bucket:prod-data
 
 Action:
-storage.objects.get
+storage.objects.delete
 
 Context:
 environment=production
@@ -506,89 +824,15 @@ Explicit DENY           ✗
                          |
                          v
                        ALLOW
-```
 
----
+Risk score:
+70
 
-# Testing
+Privileged:
+false
 
-The project uses `pytest` for both unit-level evaluator testing and API-level testing.
-
-Run:
-
-```powershell
-pytest
-```
-
-Current test evidence:
-
-```text
-27 tests collected
-27 passed
-0 failed
-```
-
-The test suite covers:
-
-```text
-✓ Matching ALLOW policy
-✓ No matching policy
-✓ Explicit DENY
-✓ Wildcard action
-✓ Wildcard action mismatch
-✓ Conditions
-✓ Missing conditions
-✓ Expiration
-✓ Exact expiration boundary
-✓ Expired policies
-✓ Wildcard + condition
-✓ Wildcard + expiration
-✓ Explicit DENY + wildcard ALLOW
-✓ Expired DENY + valid ALLOW
-✓ FastAPI health endpoint
-✓ FastAPI access-analysis endpoint
-✓ API validation behavior
-✓ API ALLOW / DENY behavior
-```
-
-The API tests use FastAPI's test client and exercise the endpoint without requiring a running Uvicorn server.
-
-# Installation
-
-Create the virtual environment:
-
-```powershell
-python -m venv .venv
-```
-
-Activate it:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Install the project:
-
-```powershell
-python -m pip install -e .
-```
-
-Install the development/runtime dependencies used by this build:
-
-```powershell
-python -m pip install pytest fastapi uvicorn
-```
-
-Verify FastAPI:
-
-```powershell
-python -c "import fastapi; print(fastapi.__version__)"
-```
-
-Run the evaluator/API test suite:
-
-```powershell
-pytest
+Audit event:
+recorded
 ```
 
 ---
@@ -611,9 +855,17 @@ The development server starts on:
 http://127.0.0.1:8000
 ```
 
-`--reload` enables automatic server reload when source files change. The terminal remains occupied by the running Uvicorn process; this is expected. Stop it with `Ctrl+C`.
+`--reload` enables automatic server reload when source files change.
 
-## Health Check
+Stop it with:
+
+```text
+Ctrl+C
+```
+
+---
+
+# Health Check
 
 Endpoint:
 
@@ -635,7 +887,9 @@ Expected response:
 }
 ```
 
-## Analyze Access
+---
+
+# Analyze Access
 
 Endpoint:
 
@@ -657,31 +911,39 @@ Example request:
     "type": "storage_bucket"
   },
   "action": {
-    "name": "storage.objects.get"
+    "name": "storage.objects.delete"
   },
   "context": {}
 }
 ```
 
-Example response:
+Example v0.3 response:
 
 ```json
 {
   "effect": "allow",
-  "reason": "Matching allow policy found"
+  "reason": "Matching allow policy found",
+  "risk_score": 70,
+  "privileged": false
 }
 ```
 
-A non-matching principal/request is evaluated through the same policy engine and can return:
+A non-matching principal can return:
 
 ```json
 {
   "effect": "deny",
-  "reason": "No matching policy found"
+  "reason": "No matching policy found",
+  "risk_score": 10,
+  "privileged": false
 }
 ```
 
-## OpenAPI / Swagger Documentation
+The API response therefore exposes both authorization and security-analysis information.
+
+---
+
+# OpenAPI / Swagger Documentation
 
 FastAPI automatically exposes the OpenAPI contract and interactive documentation.
 
@@ -697,9 +959,11 @@ Raw OpenAPI specification:
 http://127.0.0.1:8000/openapi.json
 ```
 
-The Swagger UI was validated manually during this build, including successful ALLOW and DENY access-analysis requests.
+The Swagger UI can be used to submit access-analysis requests and inspect the returned authorization/security metadata.
 
-## API Request Validation
+---
+
+# API Request Validation
 
 Pydantic models validate incoming JSON before it reaches the IAM evaluator.
 
@@ -718,13 +982,23 @@ AccessRequestBody
 └── context
 ```
 
+The response model contains:
+
+```text
+AccessDecisionResponse
+├── effect
+├── reason
+├── risk_score
+└── privileged
+```
+
 Invalid or missing request fields are rejected by FastAPI with an HTTP `422` validation response.
 
 ---
 
 # API Design Boundary
 
-The API layer deliberately separates HTTP concerns from authorization logic:
+The API layer deliberately separates HTTP concerns from authorization/security logic:
 
 ```text
 HTTP JSON
@@ -737,6 +1011,14 @@ Internal IAM dataclasses
    |
    v
 AccessAnalyzer
+   |
+   +----> Authorization
+   |
+   +----> Risk scoring
+   |
+   +----> Privileged detection
+   |
+   +----> Audit logging
    |
    v
 AccessDecision
@@ -751,17 +1033,156 @@ The current API is a learning/portfolio interface rather than a production polic
 
 ---
 
+# Testing
+
+The project uses `pytest` for unit-level evaluator testing and API-level testing.
+
+Run the complete suite:
+
+```powershell
+pytest
+```
+
+Current v0.3 test evidence:
+
+```text
+35+ tests
+0 failed
+```
+
+The final v0.3 build includes:
+
+```text
+✓ Core analyzer tests
+✓ Wildcard action tests
+✓ IAM condition tests
+✓ Policy expiration tests
+✓ Explicit DENY tests
+✓ Audit event tests
+✓ Audit logger tests
+✓ Risk scoring tests
+✓ Privileged access detection tests
+✓ FastAPI endpoint tests
+```
+
+At the completed privileged-access stage, the full regression suite produced:
+
+```text
+41 passed
+1 warning
+0 failed
+```
+
+The warning is a dependency deprecation warning originating from the installed FastAPI/Starlette test-client stack and does not represent a failing application test.
+
+---
+
+# Test Coverage by Capability
+
+## Authorization
+
+```text
+✓ Matching ALLOW policy
+✓ No matching policy
+✓ Explicit DENY
+✓ Wildcard action
+✓ Wildcard action mismatch
+✓ Conditions
+✓ Missing conditions
+✓ Expiration
+✓ Exact expiration boundary
+✓ Expired policies
+✓ Wildcard + condition
+✓ Wildcard + expiration
+✓ Explicit DENY + wildcard ALLOW
+✓ Expired DENY + valid ALLOW
+```
+
+## Security
+
+```text
+✓ AuditEvent creation
+✓ AuditLogger recording
+✓ Analyzer audit event generation
+✓ Read action risk scoring
+✓ Write action risk scoring
+✓ Delete action risk scoring
+✓ IAM action risk scoring
+✓ Privileged action detection
+✓ Non-privileged action detection
+✓ Analyzer privileged flag
+```
+
+## API
+
+```text
+✓ FastAPI health endpoint
+✓ FastAPI access-analysis endpoint
+✓ API validation behavior
+✓ API ALLOW / DENY behavior
+✓ API risk score response
+✓ API privileged flag response
+```
+
+The API tests use FastAPI's test client and exercise the endpoint without requiring a running Uvicorn server.
+
+---
+
+# Installation
+
+Create the virtual environment:
+
+```powershell
+python -m venv .venv
+```
+
+Activate it:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the project:
+
+```powershell
+python -m pip install -e .
+```
+
+Install the development/runtime dependencies:
+
+```powershell
+python -m pip install pytest fastapi uvicorn
+```
+
+Verify FastAPI:
+
+```powershell
+python -c "import fastapi; print(fastapi.__version__)"
+```
+
+Run the full test suite:
+
+```powershell
+pytest
+```
+
+---
+
 # Python Environment
 
-Developed and tested with:
+The v0.3 development environment used for the build included:
 
 ```text
 Python 3.14.7
 pytest 9.1.1
-FastAPI 0.141.1
-Uvicorn 0.52.4
-Pydantic 2.13.4
+FastAPI
+Uvicorn
+Pydantic
 ```
+
+Exact installed versions can be verified from the active virtual environment.
+
+---
 
 # Security Design Principles Demonstrated
 
@@ -793,6 +1214,18 @@ Authorization decisions can depend on request context.
 
 The evaluator can receive a fixed evaluation timestamp, enabling reliable testing.
 
+## 7. Security observability
+
+Authorization decisions can generate structured audit events.
+
+## 8. Risk-aware authorization analysis
+
+Actions receive a deterministic baseline risk score.
+
+## 9. Privileged access identification
+
+Security-sensitive operations can be identified separately from ordinary access.
+
 ---
 
 # Limitations
@@ -816,6 +1249,14 @@ It currently does not implement:
 - Permission boundaries
 - Service control policies
 - Credential/session policies
+- Persistent audit storage
+- Centralized SIEM integration
+- Dynamic risk scoring based on resource sensitivity
+- Machine-learning/anomaly-based risk detection
+- Comprehensive privileged-action taxonomy
+- API authentication
+- API authorization
+- Persistent policy management
 
 These are potential future extensions.
 
@@ -823,24 +1264,86 @@ These are potential future extensions.
 
 # Future Roadmap
 
-The current objective is complete: the evaluator has been exposed through a FastAPI REST endpoint with generated OpenAPI documentation.
+The project is intentionally developed as an incremental security-engineering exercise.
 
-## v0.3 / API Enhancements
-
-Potential next enhancements:
+## v0.1 — Basic IAM Evaluator
 
 ```text
-JSON policy parser
-Policy input through API
-Policy collections / policy store
-Multiple condition operators
-CIDR/IP conditions
-Resource wildcard matching
-Multiple principals
-Structured decision reasons
+Basic IAM policy evaluator
+        |
+        v
+Principal/resource/action modeling
+        |
+        v
+ALLOW / DENY decisions
 ```
 
-## v0.4 / Cloud IAM Modeling
+## v0.2 — Context-Aware Authorization + API
+
+```text
+Wildcard matching
+        +
+IAM-style conditions
+        +
+Policy expiration
+        +
+Explicit DENY precedence
+        +
+Deterministic testing
+        |
+        v
+FastAPI REST endpoint
+        +
+Pydantic validation
+        +
+OpenAPI / Swagger documentation
+```
+
+## v0.3 — Security Analyzer
+
+```text
+Authorization
+        +
+Audit logging
+        +
+Risk scoring
+        +
+Privileged access detection
+        |
+        v
+Security-aware AccessDecision
+```
+
+Completed v0.3 evidence:
+
+```text
+41 automated tests passing
+Audit event model
+Audit logger
+Risk scoring engine
+Privileged access detector
+API security metadata
+HLD + LLD architecture diagrams
+```
+
+## Future Security Enhancements
+
+Potential next steps:
+
+```text
+Risk scoring based on resource sensitivity
+Risk scoring based on principal type
+Risk thresholds / severity levels
+High-risk access alerts
+Structured audit event persistence
+JSON audit output
+SIEM integration
+Policy change auditing
+Privileged access reporting
+Access review reports
+```
+
+## Future IAM Modeling
 
 Potential cloud IAM modeling:
 
@@ -850,9 +1353,11 @@ Resource policies
 Role assumption
 Groups and group membership
 Permission boundaries
+Service control policies
+Organization policies
 ```
 
-## v0.5 / Enterprise IAM Simulation
+## Future Enterprise IAM Simulation
 
 Potential enterprise capabilities:
 
@@ -863,14 +1368,16 @@ Policy inheritance
 Organization constraints
 Policy analysis/reporting
 Access graph visualization
-Authentication and API authorization
+Authentication
+API authorization
+Policy-as-code workflows
 ```
 
 ---
 
 # Portfolio Outcome
 
-This project demonstrates practical Python implementation of an IAM authorization engine and its exposure as a REST service.
+This project demonstrates practical Python implementation of an IAM authorization engine, security analyzer, and REST service.
 
 It combines:
 
@@ -893,6 +1400,12 @@ Context-aware access control
 +
 Time-based authorization
 +
+Audit logging
++
+Risk scoring
++
+Privileged access detection
++
 Automated testing
 +
 FastAPI REST API
@@ -902,9 +1415,11 @@ Pydantic request validation
 Uvicorn application serving
 +
 OpenAPI / Swagger documentation
++
+Security-oriented architecture
 ```
 
-The project is intentionally designed as an incremental engineering exercise:
+The project demonstrates an incremental engineering progression:
 
 ```text
 v0.1
@@ -919,27 +1434,37 @@ Conditions
 Expiration
 +
 Explicit DENY precedence
-+
-23 evaluator tests
         |
         v
 API Build
 FastAPI REST endpoint
 +
-Pydantic request validation
+Pydantic validation
 +
-OpenAPI / Swagger docs
+OpenAPI / Swagger
+        |
+        v
+v0.3
+Security Analyzer
 +
-API tests
+Audit logging
 +
-27 total automated tests
+Risk scoring
++
+Privileged access detection
++
+Security-aware API responses
++
+41 automated tests
         |
         v
 Future
-Enterprise IAM policy simulation
+Enterprise IAM security analysis
 ```
 
-## Current Build Evidence
+---
+
+# Current Build Evidence
 
 ```text
 Core policy evaluator
@@ -969,6 +1494,41 @@ Pydantic request validation
 Swagger UI / OpenAPI
         ✓
 
-27 automated tests passing
+Audit event model
+        ✓
+
+Audit logger
+        ✓
+
+Risk scoring
+        ✓
+
+Privileged access detection
+        ✓
+
+Security metadata in API response
+        ✓
+
+HLD architecture diagram
+        ✓
+
+LLD architecture diagram
+        ✓
+
+41 automated tests passing
         ✓
 ```
+
+---
+
+# Version
+
+```text
+IAM Access Analyzer
+Version: 0.3.0
+Status: Security Analyzer build complete
+```
+
+The v0.3 objective is complete:
+
+> Extend the IAM policy evaluator into a security analyzer by adding audit logging, risk scoring, and privileged access detection while preserving the existing authorization behavior and API functionality.
