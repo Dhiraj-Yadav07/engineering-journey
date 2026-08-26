@@ -87,4 +87,5 @@ def analyze_access(request: AccessRequestBody):
         "effect": decision.effect.value,
         "reason": decision.reason,
         "risk_score": decision.risk_score,
+        "privileged": decision.privileged,
     }

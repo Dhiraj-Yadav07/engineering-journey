@@ -56,3 +56,4 @@ class AccessDecision:
     effect: Effect
     reason: str
     risk_score: int = 0
+    privileged: bool = False

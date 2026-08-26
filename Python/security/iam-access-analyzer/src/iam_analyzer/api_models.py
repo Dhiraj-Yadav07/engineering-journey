@@ -26,3 +26,4 @@ class AccessDecisionResponse(BaseModel):
     effect: str
     reason: str
     risk_score: int
+    privileged: bool

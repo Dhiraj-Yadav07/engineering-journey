@@ -716,3 +716,41 @@ def test_analyzer_includes_risk_score():
 
     assert decision.effect == Effect.ALLOW
     assert decision.risk_score == 70
+
+def test_analyzer_detects_privileged_access():
+    principal = Principal(
+        id="user:alice@example.com",
+        type=PrincipalType.USER,
+    )
+
+    resource = Resource(
+        id="project:prod",
+        type="project",
+    )
+
+    action = Action(
+        name="iam.roles.update",
+    )
+
+    policy = Policy(
+        principal=principal,
+        resource=resource,
+        action=action,
+        effect=Effect.ALLOW,
+    )
+
+    request = AccessRequest(
+        principal=principal,
+        resource=resource,
+        action=action,
+        context={},
+    )
+
+    analyzer = AccessAnalyzer(
+        policies=[policy],
+    )
+
+    decision = analyzer.analyze(request)
+
+    assert decision.effect == Effect.ALLOW
+    assert decision.privileged is True

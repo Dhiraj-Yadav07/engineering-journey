@@ -36,6 +36,7 @@ def test_analyze_access_allows_alice():
         "effect": "allow",
         "reason": "Matching allow policy found",
         "risk_score": 10,
+        "privileged": False,
     }
 
 def test_analyze_access_denies_bob():
@@ -62,6 +63,7 @@ def test_analyze_access_denies_bob():
         "effect": "deny",
         "reason": "No matching policy found",
         "risk_score": 10,
+        "privileged": False,
     }
 
 def test_analyze_access_rejects_missing_principal():
