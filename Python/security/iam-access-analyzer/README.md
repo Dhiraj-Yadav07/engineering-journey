@@ -200,6 +200,7 @@ The core analyzer remains independent of FastAPI.
 iam-access-analyzer/
 │
 ├── .gitignore
+├── Dockerfile
 ├── pyproject.toml
 ├── README.md
 │
@@ -1262,6 +1263,414 @@ These are potential future extensions.
 
 ---
 
+# Docker Containerization
+
+v0.3 is containerized with Docker so the analyzer can be run as a self-contained Linux container without relying on the host Python environment.
+
+The container packages:
+
+```text
+Python runtime
++
+IAM Access Analyzer package
++
+FastAPI
++
+Uvicorn
+```
+
+The container exposes the FastAPI application on port `8000`.
+
+## Docker Prerequisites
+
+The local Docker workflow was validated on Windows using Docker Desktop with the Linux container backend.
+
+Verify Docker is available:
+
+```powershell
+docker --version
+docker info
+docker compose version
+```
+
+The validated environment reported:
+
+```text
+Docker version 29.7.2
+Docker Compose version v5.4.0
+Docker Desktop Linux backend
+WSL 2
+```
+
+Docker Desktop is responsible for providing the Linux container runtime. The application itself does not require a separate Python installation inside the container.
+
+## Dockerfile
+
+The build uses a lightweight Python base image:
+
+```dockerfile
+FROM python:3.14-slim
+
+WORKDIR /app
+
+COPY pyproject.toml .
+COPY src ./src
+
+RUN pip install --no-cache-dir .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "iam_analyzer.api:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+The important containerization decisions are:
+
+- `python:3.14-slim` provides a smaller Python runtime image.
+- `/app` is used as the container working directory.
+- `pyproject.toml` and `src/` are copied into the image.
+- `pip install --no-cache-dir .` installs the project and its declared runtime dependencies.
+- `EXPOSE 8000` documents the application port.
+- Uvicorn binds to `0.0.0.0` so the service is reachable through the published Docker port.
+
+## Build the Docker Image
+
+From the project root:
+
+```powershell
+docker build -t iam-access-analyzer:0.3.0 .
+```
+
+The successful build produced:
+
+```text
+iam-access-analyzer:0.3.0
+```
+
+Verify the image:
+
+```powershell
+docker images
+```
+
+Expected image entry:
+
+```text
+iam-access-analyzer:0.3.0
+```
+
+The validated local build reported approximately:
+
+```text
+Disk usage:    219 MB
+Content size:   53.6 MB
+```
+
+These values are local Docker Desktop measurements and can vary between environments.
+
+## Run the Container
+
+Start the analyzer with:
+
+```powershell
+docker run --name iam-access-analyzer -p 8000:8000 iam-access-analyzer:0.3.0
+```
+
+The container starts Uvicorn and listens on:
+
+```text
+http://0.0.0.0:8000
+```
+
+The host can access the service through:
+
+```text
+http://localhost:8000
+```
+
+The terminal remains attached to the container logs while the process is running. This is expected behavior for `docker run` without detached mode.
+
+## Verify Container Status
+
+In another PowerShell terminal:
+
+```powershell
+docker ps
+```
+
+Expected state:
+
+```text
+STATUS: Up
+PORTS: 0.0.0.0:8000->8000/tcp
+```
+
+Inspect the container state directly:
+
+```powershell
+docker inspect iam-access-analyzer --format "{{.State.Status}}"
+```
+
+Expected:
+
+```text
+running
+```
+
+## Docker Health Check
+
+Validate the API through the published host port:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+```
+
+Expected response:
+
+```text
+status
+------
+ok
+```
+
+This confirms that traffic can travel from the Windows host through Docker's published port to the FastAPI application inside the container.
+
+## Analyze Access from the Container
+
+The same REST API can be exercised against the containerized service.
+
+Example PowerShell request:
+
+```powershell
+$body = @{
+    principal = @{
+        id = "user:alice@example.com"
+        type = "user"
+    }
+    resource = @{
+        id = "bucket:prod-data"
+        type = "storage_bucket"
+    }
+    action = @{
+        name = "storage.objects.delete"
+    }
+    context = @{}
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod `
+    -Uri http://localhost:8000/analyze-access `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+Validated response:
+
+```text
+ effect reason                      risk_score privileged
+ ------ ------                      ---------- ----------
+ allow  Matching allow policy found         70      False
+```
+
+This demonstrates that the containerized service preserves the v0.3 authorization and security-analysis behavior.
+
+## Privileged Access Detection in the Container
+
+A privileged IAM action can also be tested through the containerized API.
+
+Example:
+
+```powershell
+$body = @{
+    principal = @{
+        id = "user:alice@example.com"
+        type = "user"
+    }
+    resource = @{
+        id = "project:prod"
+        type = "project"
+    }
+    action = @{
+        name = "iam.roles.update"
+    }
+    context = @{}
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod `
+    -Uri http://localhost:8000/analyze-access `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+Validated response:
+
+```text
+ effect reason                      risk_score privileged
+ ------ ------                      ---------- ----------
+ allow  Matching allow policy found         70       True
+```
+
+The current privileged-action baseline specifically recognizes IAM-oriented privileged actions such as `iam.roles.update`. Ordinary resource operations such as `storage.objects.delete` can have a high risk score without being classified as privileged by the current privileged-action taxonomy.
+
+## Docker Logs
+
+Inspect application logs with:
+
+```powershell
+docker logs iam-access-analyzer
+```
+
+Validated logs included:
+
+```text
+Uvicorn running on http://0.0.0.0:8000
+GET /health HTTP/1.1 200 OK
+POST /analyze-access HTTP/1.1 200 OK
+GET /docs HTTP/1.1 200 OK
+GET /openapi.json HTTP/1.1 200 OK
+```
+
+The logs demonstrate successful application startup and successful HTTP requests through the container.
+
+## Container Lifecycle
+
+Stop the running container:
+
+```powershell
+docker stop iam-access-analyzer
+```
+
+Confirm that no containers are running:
+
+```powershell
+docker ps
+```
+
+The stopped container remains available:
+
+```powershell
+docker ps -a
+```
+
+A successful stop exits with code `0`.
+
+Restart the existing container:
+
+```powershell
+docker start iam-access-analyzer
+```
+
+Verify it is running:
+
+```powershell
+docker ps
+```
+
+Re-test the API:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+```
+
+Expected:
+
+```text
+status
+------
+ok
+```
+
+This validates that the same container can be stopped and restarted without rebuilding the image.
+
+## Docker Image Inspection
+
+Verify the image tag:
+
+```powershell
+docker image inspect iam-access-analyzer:0.3.0 --format "{{.RepoTags}}"
+```
+
+Validated result:
+
+```text
+[iam-access-analyzer:0.3.0]
+```
+
+Verify the container working directory:
+
+```powershell
+docker inspect iam-access-analyzer --format "{{.Config.WorkingDir}}"
+```
+
+Validated result:
+
+```text
+/app
+```
+
+Verify the exposed application port:
+
+```powershell
+docker inspect iam-access-analyzer --format "{{.Config.ExposedPorts}}"
+```
+
+Validated result:
+
+```text
+map[8000/tcp:{}]
+```
+
+These inspection commands provide direct evidence of the image/container configuration rather than relying only on the application response.
+
+## Docker Validation Summary
+
+The v0.3 containerization build was validated end-to-end:
+
+```text
+Docker installed and available
+        ✓
+
+Docker image built successfully
+        ✓
+
+Image tagged iam-access-analyzer:0.3.0
+        ✓
+
+Container started successfully
+        ✓
+
+Port 8000 published to host
+        ✓
+
+/health returned status=ok
+        ✓
+
+/analyze-access returned authorization decision
+        ✓
+
+Risk score returned through containerized API
+        ✓
+
+Privileged access detection returned True for iam.roles.update
+        ✓
+
+Container logs recorded successful requests
+        ✓
+
+Container stopped with exit code 0
+        ✓
+
+Container restarted successfully
+        ✓
+
+Container configuration inspected
+        ✓
+```
+
+The Docker image is therefore not only buildable but also operationally validated through the real HTTP interface.
+
+---
+
 # Future Roadmap
 
 The project is intentionally developed as an incremental security-engineering exercise.
@@ -1417,6 +1826,8 @@ Uvicorn application serving
 OpenAPI / Swagger documentation
 +
 Security-oriented architecture
++
+Docker containerization
 ```
 
 The project demonstrates an incremental engineering progression:
@@ -1515,6 +1926,12 @@ HLD architecture diagram
 LLD architecture diagram
         ✓
 
+Docker image iam-access-analyzer:0.3.0
+        ✓
+
+Container runtime validation
+        ✓
+
 41 automated tests passing
         ✓
 ```
@@ -1526,7 +1943,7 @@ LLD architecture diagram
 ```text
 IAM Access Analyzer
 Version: 0.3.0
-Status: Security Analyzer build complete
+Status: Security Analyzer + Docker containerization build complete
 ```
 
 The v0.3 objective is complete:
