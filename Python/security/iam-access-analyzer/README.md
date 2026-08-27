@@ -1949,3 +1949,985 @@ Status: Security Analyzer + Docker containerization build complete
 The v0.3 objective is complete:
 
 > Extend the IAM policy evaluator into a security analyzer by adding audit logging, risk scoring, and privileged access detection while preserving the existing authorization behavior and API functionality.
+
+---
+
+# Threat Model
+
+v0.3 includes a lightweight threat model for the IAM Access Analyzer service. The objective is to identify realistic abuse cases around authorization decisions, security metadata, audit events, and the containerized API.
+
+The threat model is intentionally scoped to the current portfolio implementation. It identifies the security boundaries and failure modes that would matter when evolving the analyzer toward an enterprise IAM security-analysis service.
+
+## Threat Model Scope
+
+```text
+Client
+  |
+  | HTTP / JSON
+  v
+FastAPI API
+  |
+  | validated request
+  v
+AccessAnalyzer
+  |
+  +----> Policy matching
+  +----> Conditions
+  +----> Expiration
+  +----> DENY precedence
+  +----> Risk scoring
+  +----> Privileged detection
+  +----> Audit logging
+  |
+  v
+AccessDecision
+  |
+  +----> Effect
+  +----> Reason
+  +----> Risk score
+  +----> Privileged flag
+```
+
+The current Docker deployment adds an additional boundary:
+
+```text
+Windows Host
+     |
+     | localhost:8000
+     v
+Docker published port
+     |
+     v
+Linux container
+     |
+     v
+Uvicorn / FastAPI
+     |
+     v
+IAM Access Analyzer
+```
+
+## Assets
+
+The primary assets considered by the threat model are:
+
+| Asset | Security Importance |
+|---|---|
+| Authorization decision | Determines whether requested access is allowed |
+| IAM policy data | Defines authorization behavior |
+| Principal identity | Determines who is requesting access |
+| Resource identity | Determines what is being accessed |
+| Request context | Can influence conditional authorization |
+| Risk score | Security classification of an access request |
+| Privileged flag | Identifies potentially security-sensitive operations |
+| Audit events | Security observability and investigation evidence |
+| API availability | Required for clients to obtain decisions |
+| Container image | Runtime artifact containing the analyzer |
+| Application configuration/code | Determines authorization semantics |
+
+## Trust Boundaries
+
+### Trust Boundary 1 — External Client to API
+
+The HTTP client is outside the application trust boundary.
+
+```text
+UNTRUSTED / EXTERNAL
+        |
+        | HTTP JSON
+        v
++-------------------+
+| FastAPI API       |
+| Pydantic boundary |
++-------------------+
+```
+
+Primary concern:
+
+> Do not allow malformed or unexpected request data to directly enter the authorization engine.
+
+The current implementation addresses this with Pydantic request validation.
+
+### Trust Boundary 2 — API to Authorization Engine
+
+The API converts validated request models into internal IAM domain objects.
+
+```text
+Pydantic models
+       |
+       v
+Internal IAM models
+       |
+       v
+AccessAnalyzer
+```
+
+This separation reduces coupling between transport-level input and authorization logic.
+
+### Trust Boundary 3 — Host to Container
+
+Docker provides process and filesystem isolation from the host application environment.
+
+```text
+Host
+  |
+  | published TCP port
+  v
+Container
+  |
+  v
+FastAPI / Uvicorn
+```
+
+The current deployment is intended for local development and demonstration, not an internet-facing production deployment.
+
+## STRIDE-Oriented Threat Analysis
+
+### Spoofing
+
+**Threat:** An attacker impersonates a legitimate principal in an access-analysis request.
+
+**Example:**
+
+```json
+{
+  "principal": {
+    "id": "user:alice@example.com",
+    "type": "user"
+  }
+}
+```
+
+A caller could claim to be Alice because the current API accepts the principal identity as request data.
+
+**Current mitigation:**
+
+- Pydantic validates the request structure.
+- The analyzer evaluates the supplied principal against configured policy data.
+
+**Important limitation:**
+
+The API does not authenticate the caller or cryptographically establish that the caller is actually Alice.
+
+**Risk:** High for production use.
+
+**Future mitigation:**
+
+- API authentication
+- Identity-aware authorization
+- mTLS or OAuth/OIDC
+- Trusted identity propagation
+- Caller-to-principal binding
+
+---
+
+### Tampering
+
+**Threat:** A caller modifies principal, resource, action, or context values to influence the authorization result.
+
+**Example attack:**
+
+```text
+Legitimate request:
+environment=production
+
+Tampered request:
+environment=development
+```
+
+or changing the requested action to a less restricted operation.
+
+**Current mitigation:**
+
+- Pydantic validates the request schema.
+- Conditions are evaluated by the analyzer.
+- Explicit DENY takes precedence.
+- Policy expiration is enforced.
+
+**Risk:** Medium to High depending on deployment trust.
+
+**Future mitigation:**
+
+- Authenticate API callers.
+- Authorize who can submit analysis requests.
+- Treat trusted security context as server-derived rather than caller-supplied.
+- Add request integrity controls where required.
+
+---
+
+### Repudiation
+
+**Threat:** A caller denies having made an authorization request or an administrator cannot prove what decision was generated.
+
+**Current mitigation:**
+
+v0.3 creates an `AuditEvent` containing:
+
+```text
+timestamp
+principal
+resource
+action
+effect
+reason
+```
+
+The analyzer records the event through `AuditLogger` when a logger is configured.
+
+**Important limitation:**
+
+The current logger is in-memory and is not a durable, centralized audit system.
+
+**Risk:** Medium.
+
+**Future mitigation:**
+
+- Durable audit storage
+- Centralized logging
+- Immutable event storage
+- Request/correlation IDs
+- Authenticated caller identity
+- SIEM integration
+
+---
+
+### Information Disclosure
+
+**Threat:** The API exposes security-sensitive authorization information to an unauthorized caller.
+
+Potentially useful information includes:
+
+```text
+effect
+reason
+risk_score
+privileged
+```
+
+For example:
+
+```json
+{
+  "effect": "allow",
+  "reason": "Matching allow policy found",
+  "risk_score": 70,
+  "privileged": true
+}
+```
+
+This metadata can reveal information about authorization policy behavior.
+
+**Current mitigation:**
+
+- API is designed for local/portfolio use.
+- The implementation does not expose persistent policy-management endpoints.
+
+**Risk:** Medium for local use; potentially High if exposed publicly.
+
+**Future mitigation:**
+
+- API authentication and authorization
+- Response minimization
+- Tenant isolation
+- Rate limiting
+- Structured security logging
+- Avoid exposing policy internals unnecessarily
+
+---
+
+### Denial of Service
+
+**Threat:** A caller sends excessive or expensive requests to exhaust application resources.
+
+Potential attack surface:
+
+```text
+HTTP request volume
+       |
+       v
+Pydantic validation
+       |
+       v
+Policy evaluation
+       |
+       v
+Audit event creation
+```
+
+**Current mitigation:**
+
+The analyzer performs deterministic in-process evaluation and has no external database dependency in v0.3.
+
+**Risk:** Low for local development; Medium or High for internet-facing deployment.
+
+**Future mitigation:**
+
+- Rate limiting
+- Authentication
+- Request size limits
+- Concurrency controls
+- Container resource limits
+- Reverse proxy / API gateway
+- Observability and alerting
+
+---
+
+### Elevation of Privilege
+
+**Threat:** A caller manipulates a request or policy relationship to obtain access to a privileged operation.
+
+A particularly important example is:
+
+```text
+iam.roles.update
+```
+
+The current analyzer classifies this action as privileged:
+
+```text
+privileged = True
+```
+
+The authorization decision remains separate from the privileged classification.
+
+**Current mitigation:**
+
+- Explicit DENY precedence
+- Principal matching
+- Resource matching
+- Action matching
+- Condition evaluation
+- Policy expiration
+- Privileged-action detection
+- Risk scoring
+
+**Risk:** High if policy data or principal identity can be manipulated.
+
+**Future mitigation:**
+
+- Strong caller authentication
+- Policy administration controls
+- Complete privileged-action taxonomy
+- Privileged access approval workflows
+- Separation of duties
+- Policy change auditing
+
+---
+
+## Threat Summary
+
+| Threat | Example | Current Control | Residual Risk |
+|---|---|---|---|
+| Spoofing | Claim to be another principal | Request validation only | High |
+| Tampering | Modify action/context | Policy evaluation + validation | Medium/High |
+| Repudiation | Deny having requested access | In-memory audit event | Medium |
+| Information disclosure | Learn authorization metadata | Local deployment scope | Medium |
+| Denial of service | Flood API | Lightweight synchronous processing | Medium |
+| Elevation of privilege | Request IAM administrative action | DENY precedence + privileged detection | High |
+
+The most important production gap is **caller authentication and authorization**. The analyzer currently evaluates the identity presented in the request; it does not independently establish that identity.
+
+---
+
+# Security Abuse Cases Demonstrated
+
+The final gate demonstrates three representative authorization/security outcomes.
+
+## Abuse Case 1 — Ordinary Access
+
+Request:
+
+```text
+Principal:
+user:alice@example.com
+
+Resource:
+bucket:prod-data
+
+Action:
+storage.objects.get
+```
+
+Observed result:
+
+```text
+effect       = allow
+risk_score   = 10
+privileged   = False
+```
+
+This demonstrates a normal low-risk resource read.
+
+## Abuse Case 2 — Privileged IAM Access
+
+Request:
+
+```text
+Principal:
+user:alice@example.com
+
+Resource:
+project:prod
+
+Action:
+iam.roles.update
+```
+
+Observed result:
+
+```text
+effect       = allow
+risk_score   = 70
+privileged   = True
+```
+
+This demonstrates that an access request can be authorized while simultaneously being identified as privileged and high-risk.
+
+This distinction is important:
+
+> Authorization success does not mean that the access is low-risk.
+
+The analyzer deliberately returns both dimensions.
+
+## Abuse Case 3 — Unauthorized Principal
+
+Request:
+
+```text
+Principal:
+user:bob@example.com
+
+Resource:
+bucket:prod-data
+
+Action:
+storage.objects.get
+```
+
+Observed result:
+
+```text
+effect       = deny
+reason       = No matching policy found
+risk_score   = 10
+privileged   = False
+```
+
+This demonstrates default-deny behavior for a principal without a matching policy.
+
+---
+
+# Gate Demo Evidence
+
+The gate deliverable requires:
+
+```text
+Threat model
++
+Demo evidence
+```
+
+The repository contains screenshot evidence under:
+
+```text
+docs/
+└── demo/
+    ├── 01-health-check.png
+    ├── 02-normal-access-allowed.png
+    ├── 03-privileged-access-detected.png
+    ├── 04-denied-access.png
+    ├── 05-test-suite.png
+    └── 06-docker-runtime.png
+```
+
+These screenshots are intended to make the final architecture/security gate independently reviewable without requiring the reviewer to reproduce the complete local environment.
+
+## Evidence 01 — Health Check
+
+![Dockerized API health check](docs/demo/01-health-check.png)
+
+The health check demonstrates that the containerized FastAPI service is reachable through the published host port.
+
+Validated endpoint:
+
+```text
+GET http://localhost:8000/health
+```
+
+Expected:
+
+```text
+status
+------
+ok
+```
+
+## Evidence 02 — Normal Access Allowed
+
+![Normal access allowed](docs/demo/02-normal-access-allowed.png)
+
+Request:
+
+```text
+user:alice@example.com
+        |
+        v
+bucket:prod-data
+        |
+        v
+storage.objects.get
+```
+
+Observed:
+
+```text
+effect       allow
+risk_score   10
+privileged   False
+```
+
+This demonstrates normal authorized resource access.
+
+## Evidence 03 — Privileged Access Detected
+
+![Privileged access detected](docs/demo/03-privileged-access-detected.png)
+
+Request:
+
+```text
+user:alice@example.com
+        |
+        v
+project:prod
+        |
+        v
+iam.roles.update
+```
+
+Observed:
+
+```text
+effect       allow
+risk_score   70
+privileged   True
+```
+
+This is the primary security-analysis demonstration.
+
+The system distinguishes:
+
+```text
+Authorization:
+ALLOW
+
+Security classification:
+PRIVILEGED
+
+Risk:
+70
+```
+
+## Evidence 04 — Denied Access
+
+![Denied access](docs/demo/04-denied-access.png)
+
+Request:
+
+```text
+user:bob@example.com
+        |
+        v
+bucket:prod-data
+        |
+        v
+storage.objects.get
+```
+
+Observed:
+
+```text
+effect       deny
+reason       No matching policy found
+```
+
+This demonstrates that the analyzer does not grant access merely because the action itself is valid.
+
+## Evidence 05 — Full Test Suite
+
+![Full pytest suite](docs/demo/05-test-suite.png)
+
+The final regression suite was executed before the gate demonstration.
+
+Observed:
+
+```text
+41 passed
+1 warning
+0 failed
+```
+
+The warning is a dependency deprecation warning from the FastAPI/Starlette test-client stack and does not represent an application test failure.
+
+## Evidence 06 — Docker Runtime
+
+![Docker runtime validation](docs/demo/06-docker-runtime.png)
+
+The runtime evidence demonstrates:
+
+```text
+Container:
+iam-access-analyzer
+
+Image:
+iam-access-analyzer:0.3.0
+
+Status:
+running
+
+Published port:
+8000 -> 8000
+```
+
+Additional validation included:
+
+```text
+docker inspect iam-access-analyzer
+docker image inspect iam-access-analyzer:0.3.0
+docker logs iam-access-analyzer
+```
+
+The container was also stopped and restarted successfully.
+
+---
+
+# Gate Demonstration Walkthrough
+
+The recommended demonstration sequence is:
+
+```text
+1. Show architecture / threat model
+             |
+             v
+2. Show Docker container running
+             |
+             v
+3. GET /health
+             |
+             v
+4. Normal read access
+             |
+             v
+5. Privileged IAM action
+             |
+             v
+6. Unauthorized principal
+             |
+             v
+7. Show pytest = 41 passed
+             |
+             v
+8. Explain security boundaries + limitations
+```
+
+## Step 1 — Show the Architecture
+
+Start with the HLD:
+
+```text
+Client
+  |
+  v
+FastAPI
+  |
+  v
+AccessAnalyzer
+  |
+  +--> Authorization
+  +--> Risk Scoring
+  +--> Privileged Detection
+  +--> Audit Logging
+  |
+  v
+AccessDecision
+```
+
+Then explain that the Docker container provides the runtime boundary around the API and analyzer.
+
+## Step 2 — Show the Container
+
+Run:
+
+```powershell
+docker ps
+```
+
+Point out:
+
+```text
+iam-access-analyzer:0.3.0
+0.0.0.0:8000->8000/tcp
+```
+
+## Step 3 — Demonstrate Health
+
+Run:
+
+```powershell
+Invoke-RestMethod http://localhost:8000/health
+```
+
+Expected:
+
+```text
+status
+------
+ok
+```
+
+## Step 4 — Demonstrate Normal Access
+
+Use:
+
+```text
+storage.objects.get
+```
+
+Expected:
+
+```text
+allow
+risk_score = 10
+privileged = False
+```
+
+Explain:
+
+> This is a normal authorized resource read and is classified as low risk by the current baseline scoring model.
+
+## Step 5 — Demonstrate Privileged Access
+
+Use:
+
+```text
+iam.roles.update
+```
+
+Expected:
+
+```text
+allow
+risk_score = 70
+privileged = True
+```
+
+Explain:
+
+> The analyzer does not treat authorization and security classification as the same thing. An action can be allowed while still being identified as privileged and high-risk.
+
+## Step 6 — Demonstrate Denial
+
+Use:
+
+```text
+user:bob@example.com
+```
+
+against:
+
+```text
+bucket:prod-data
+storage.objects.get
+```
+
+Expected:
+
+```text
+deny
+No matching policy found
+```
+
+Explain:
+
+> The analyzer follows default-deny behavior when no applicable policy matches the request.
+
+## Step 7 — Show Regression Evidence
+
+Run:
+
+```powershell
+pytest
+```
+
+Expected:
+
+```text
+41 passed
+1 warning
+0 failed
+```
+
+## Step 8 — Explain the Main Production Gaps
+
+The most important limitations to call out during the gate are:
+
+```text
+No API authentication
+No API authorization
+No persistent policy store
+In-memory audit logging
+Limited privileged-action taxonomy
+Simplified IAM semantics
+No centralized SIEM integration
+```
+
+These are known limitations rather than hidden risks.
+
+---
+
+# Threat Model Conclusions
+
+The v0.3 analyzer demonstrates the core security-engineering pattern:
+
+```text
+Authorization
+      +
+Security Classification
+      +
+Auditability
+      +
+Risk Awareness
+      +
+Containerized Runtime
+```
+
+The strongest architectural property is the separation between:
+
+```text
+"Is access allowed?"
+```
+
+and:
+
+```text
+"How security-sensitive is this access?"
+```
+
+This allows the analyzer to produce a richer decision:
+
+```text
+ALLOW
++
+Risk Score
++
+Privileged Classification
++
+Audit Event
+```
+
+The most significant threat-model finding is that the current API trusts the principal identity supplied by the request. Therefore, the current implementation should be treated as a **policy-analysis engine**, not as a production identity enforcement point.
+
+A production evolution would place authenticated identity and policy-management controls around the analyzer:
+
+```text
+Identity Provider
+       |
+       v
+API Gateway / Auth Layer
+       |
+       v
+IAM Access Analyzer
+       |
+       +----> Policy Store
+       |
+       +----> Audit / SIEM
+       |
+       +----> Risk Engine
+       |
+       v
+Security Decision
+```
+
+This provides a clear architectural path from the current portfolio implementation toward an enterprise IAM security-analysis service.
+
+---
+
+# Final Gate Evidence Matrix
+
+| Gate Requirement | Evidence | Location |
+|---|---|---|
+| Threat model | STRIDE-oriented threat analysis | `docs/threat-model.md` |
+| Architecture | HLD | `docs/architecture/iam-access-analyzer-hld.png` |
+| Architecture | LLD | `docs/architecture/iam-access-analyzer-lld.png` |
+| Working service | Health check | `docs/demo/01-health-check.png` |
+| Normal access | Authorized read | `docs/demo/02-normal-access-allowed.png` |
+| Privileged access | IAM role update detection | `docs/demo/03-privileged-access-detected.png` |
+| Denial | Default deny | `docs/demo/04-denied-access.png` |
+| Regression safety | 41 tests passing | `docs/demo/05-test-suite.png` |
+| Container runtime | Docker image/container | `docs/demo/06-docker-runtime.png` |
+| Docker artifact | `iam-access-analyzer:0.3.0` | Local Docker image |
+| Source implementation | Analyzer + security modules | `src/iam_analyzer/` |
+
+---
+
+# Gate Completion Status
+
+```text
+Threat model
+        ✓
+
+STRIDE-oriented threat analysis
+        ✓
+
+Security boundaries documented
+        ✓
+
+Abuse cases documented
+        ✓
+
+HLD architecture
+        ✓
+
+LLD architecture
+        ✓
+
+Docker image
+        ✓
+
+Container runtime
+        ✓
+
+Health check
+        ✓
+
+Normal access demo
+        ✓
+
+Privileged access demo
+        ✓
+
+Denied access demo
+        ✓
+
+41 automated tests
+        ✓
+
+Screenshot evidence
+        ✓
+```
+
+The IAM Access Analyzer v0.3 security-analysis build is therefore supported by both **design evidence** and **runtime evidence**.
+
+---
+
+# Version
+
+```text
+IAM Access Analyzer
+Version: 0.3.0
+Gate: Threat Model + Demo
+Status: Security Analyzer + Docker containerization + threat-model evidence complete
+```
+
+The final gate objective is:
+
+> Threat-model the IAM Access Analyzer, demonstrate its authorization and security-analysis behavior through the containerized API, and provide reproducible architecture and runtime evidence.
