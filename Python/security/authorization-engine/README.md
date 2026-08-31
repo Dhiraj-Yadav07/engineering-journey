@@ -181,8 +181,7 @@ Authorization flow:
                           |
                           v
                 Permission Matching
-                     /          \
-                   YES           NO
+                     /                             YES           NO
                     |             |
                     v             v
                   ALLOW        Check next role
@@ -405,9 +404,7 @@ Example:
 
 ```text
                     Alice
-                   /     \
-                  /       \
-                 v         v
+                   /                       /                        v         v
             Developer     Auditor
                 |             |
                 v             v
@@ -488,10 +485,9 @@ They are separate concerns.
                  |
                  | What can you do?
                  v
-          RBAC Engine
-             /       \
-            v         v
-         ALLOW      DENY
+           RBAC Engine
+              /                    v         v
+          ALLOW      DENY
 ```
 
 Authentication answers:
@@ -528,8 +524,7 @@ In a production environment, authentication and authorization could be separated
                       |
                       v
                  RBAC Decision
-                  /         \
-                 v           v
+                  /                          v           v
               ALLOW         DENY
                  |           |
                  v           v
@@ -630,7 +625,7 @@ Successful verification:
 ```text
 collected 9 items
 
-tests	est_rbac.py ......... [100%]
+tests\test_rbac.py ......... [100%]
 
 9 passed
 ```
@@ -786,11 +781,11 @@ Example RBAC:
 ```text
 Alice
   |
-Developer
+  Developer
   |
-reports:write
+  reports:write
   |
-ALLOW
+  ALLOW
 ```
 
 Example ABAC:
@@ -869,8 +864,7 @@ authorize(subject, resource, action)
                 |
                 v
       Does role contain permission?
-             /           \
-           YES            NO
+             /                      YES            NO
             |              |
             v              v
          ALLOW       Check next role
@@ -929,7 +923,7 @@ Expected:
 ============================= test session starts =============================
 collected 9 items
 
-tests	est_rbac.py ......... [100%]
+tests\test_rbac.py ......... [100%]
 
 ============================== 9 passed ======================================
 ```
@@ -1136,164 +1130,111 @@ The detailed implementation and study notes are available in:
 docs/rbac.md
 ```
 
-
 ---
 
-# 30. ABAC Implementation
+# 30. ABAC — Attribute-Based Access Control
 
-The project now also includes an **Attribute-Based Access Control (ABAC)** implementation.
+The authorization engine was extended after RBAC v0.1 with an independent **ABAC implementation**.
 
-ABAC extends authorization beyond static role membership by evaluating attributes associated with:
+ABAC evaluates access using attributes of:
 
 ```text
 User / Subject
-      +
+       +
 Resource
-      +
+       +
 Action
-      +
+       +
 Environment / Context
-      |
-      v
+       |
+       v
      Policy
-      |
-      v
+       |
+       v
 ALLOW / DENY
 ```
 
-The ABAC implementation is a separate authorization model within this project. **ReBAC remains a separate lab.**
+The ABAC implementation is intentionally separate from the original RBAC engine so that each authorization model can be understood and tested independently.
 
 ## ABAC Project Goal
 
-The ABAC lab implements authorization using:
-
-- user attributes
-- resource attributes
-- requested action
-- context/environment attributes
-
-The v0.1 policy is:
-
-```text
-ALLOW if:
-
-action == "read"
-
-AND
-
-user.department == resource.department
-
-AND
-
-context.network == "corporate"
-```
+The goal is to implement attribute-based authorization where access is determined by comparing user attributes, resource attributes, requested actions, and contextual attributes.
 
 Example:
 
 ```text
 User:
-department = engineering
+  department = engineering
 
 Resource:
-department = engineering
+  department = engineering
 
 Context:
-network = corporate
+  network = corporate
 
 Action:
-read
-
-                    |
-                    v
-             ABAC Policy
-                    |
-                    v
-                  ALLOW
+  read
 ```
 
----
-
-# 31. ABAC Architecture
-
-The project now contains both RBAC and ABAC authorization models:
+Decision:
 
 ```text
-                    Authorization Engine
-                           |
-             +-------------+-------------+
-             |                           |
-             v                           v
-            RBAC                        ABAC
-             |                           |
-        engine.py                  abac_engine.py
-        models.py                  abac_models.py
-             |                           |
-             v                           v
-     Role / Permission         User / Resource / Context
-             |                           |
-             v                           v
-       RBAC Decision              ABAC Decision
-       ALLOW / DENY               ALLOW / DENY
+department matches
+        +
+corporate network
+        |
+        v
+      ALLOW
 ```
 
-Conceptually:
+If the user and resource departments do not match:
 
 ```text
-RBAC:
-Subject → Role → Permission → Decision
-
-
-ABAC:
-Subject attributes
-       +
-Resource attributes
-       +
-Action
-       +
-Context attributes
-       |
-       v
-     Policy
-       |
-       v
-    Decision
-```
-
----
-
-# 32. ABAC Project Structure
-
-The current project structure is:
-
-```text
-authorization-engine/
-│
-├── docs/
-│   ├── rbac.md
-│   └── abac.md
-│
-├── src/
-│   └── authorization_engine/
-│       ├── __init__.py
-│       ├── models.py
-│       ├── engine.py
-│       ├── abac_models.py
-│       └── abac_engine.py
-│
-├── tests/
-│   ├── test_rbac.py
-│   └── test_abac.py
-│
-├── .gitignore
-├── pyproject.toml
-└── README.md
+User department != Resource department
+        |
+        v
+      DENY
 ```
 
 ## ABAC Components
 
-### `abac_models.py`
+```text
+ABACRequest
+├── User
+│   └── attributes
+├── Resource
+│   └── attributes
+├── Action
+└── AccessContext
+    └── attributes
+```
 
-Defines the ABAC domain objects:
+The implementation contains:
+
+```text
+src/authorization_engine/
+├── abac_models.py
+└── abac_engine.py
+```
+
+Tests:
+
+```text
+tests/
+├── test_rbac.py
+├── test_abac.py
+└── test_rebac.py
+```
+
+Detailed ABAC documentation:
+
+```text
+docs/abac.md
+```
+
+## ABAC Implementation
+
+The ABAC domain model includes:
 
 ```text
 User
@@ -1303,71 +1244,23 @@ ABACRequest
 ABACDecision
 ```
 
-### `abac_engine.py`
-
-Contains the ABAC authorization logic:
-
-```text
-ABACEngine
-```
-
-The engine evaluates user, resource, action, and context attributes against the v0.1 ABAC policy.
-
-### `tests/test_abac.py`
-
-Contains the automated ABAC test suite.
-
-### `docs/abac.md`
-
-Contains the detailed ABAC study and implementation notes.
-
----
-
-# 33. ABAC Example Usage
-
-Create a user:
+A simplified request looks like:
 
 ```python
-from authorization_engine.abac_models import (
-    User,
-    Resource,
-    AccessContext,
-    ABACRequest,
-)
-from authorization_engine.abac_engine import ABACEngine
-
 user = User(
     "alice",
-    {
-        "department": "engineering",
-    },
+    {"department": "engineering"},
 )
-```
 
-Create a resource:
-
-```python
 resource = Resource(
     "report-123",
-    {
-        "department": "engineering",
-    },
+    {"department": "engineering"},
 )
-```
 
-Create the request context:
-
-```python
 context = AccessContext(
-    {
-        "network": "corporate",
-    }
+    {"network": "corporate"},
 )
-```
 
-Create an authorization request:
-
-```python
 request = ABACRequest(
     user,
     resource,
@@ -1376,201 +1269,86 @@ request = ABACRequest(
 )
 ```
 
-Evaluate it:
+The authorization engine evaluates the request using the attributes.
 
-```python
-decision = ABACEngine().authorize(request)
+## ABAC Example
 
-print(decision)
-```
-
-Expected:
+Successful authorization:
 
 ```text
-ABACDecision(
-    allowed=True,
-    reason='department matches and request is from corporate network'
-)
+User department:     engineering
+Resource department: engineering
+Network:             corporate
+Action:              read
+
+                 |
+                 v
+
+              ALLOW
 ```
 
----
-
-# 34. ABAC DENY Example
-
-Change the resource department:
-
-```python
-resource = Resource(
-    "report-123",
-    {
-        "department": "finance",
-    },
-)
-```
-
-The user remains:
+Failed authorization:
 
 ```text
-department = engineering
+User department:     engineering
+Resource department: finance
+Network:             corporate
+Action:              read
+
+                 |
+                 v
+
+               DENY
 ```
 
-The request is:
+The implementation therefore demonstrates that ABAC can make authorization decisions without relying solely on static role membership.
 
-```text
-Alice
-engineering
-    |
-    v
-Report
-finance
-    |
-    v
-Department mismatch
-    |
-    v
-DENY
-```
+## ABAC Test Evidence
 
-The implementation returns:
+The ABAC implementation contains **7 automated tests**.
 
-```text
-ABACDecision(
-    allowed=False,
-    reason='user department does not match resource department'
-)
-```
-
-This demonstrates that authorization depends on the relationship between attributes rather than only the identity of the user.
-
----
-
-# 35. ABAC Test Evidence
-
-The ABAC-specific test suite was executed with:
+Run:
 
 ```powershell
 pytest tests/test_abac.py
 ```
 
-Result:
+Expected:
 
 ```text
 collected 7 items
 
-tests\test_abac.py ....... [100%]
+tests	est_abac.py ....... [100%]
 
 7 passed
 ```
 
-The complete regression suite was also executed:
+Full project verification after adding ABAC:
 
 ```powershell
 pytest
 ```
 
-Result:
+The combined authorization engine test suite includes both RBAC and ABAC tests.
+
+## ABAC Design Principles
+
+The implementation follows:
 
 ```text
-collected 16 items
-
-tests\test_abac.py ....... [ 43%]
-tests\test_rbac.py ....... [100%]
-
-16 passed
+✓ Attribute-based decisions
+✓ Explicit policy checks
+✓ Default deny
+✓ Context-aware authorization
+✓ Resource/user attribute comparison
+✓ Negative authorization tests
+✓ Deterministic decisions
+✓ Automated verification
 ```
 
-Therefore:
+## ABAC vs RBAC
 
-```text
-RBAC tests = 9 passed
-ABAC tests = 7 passed
-----------------------
-Total      = 16 passed
-```
-
-The ABAC implementation therefore has automated test coverage while preserving the existing RBAC behavior.
-
----
-
-# 36. ABAC Test Scenarios
-
-The ABAC test suite covers both successful and denied authorization paths.
-
-```text
-✓ Matching user/resource department + corporate network -> ALLOW
-
-✓ User/resource department mismatch -> DENY
-
-✓ Non-corporate network -> DENY
-
-✓ Unsupported action -> DENY
-
-✓ Missing user department -> DENY
-
-✓ Missing resource department -> DENY
-
-✓ Missing network context -> DENY
-```
-
-The tests demonstrate the key ABAC security property:
-
-```text
-Conditions satisfied
-        |
-        v
-      ALLOW
-
-Conditions not satisfied
-        |
-        v
-       DENY
-```
-
----
-
-# 37. ABAC Fail-Closed Behavior
-
-The ABAC implementation follows a **fail-closed** approach.
-
-If a required attribute is missing, the engine does not assume that access is permitted.
-
-Example:
-
-```text
-User.department = missing
-Resource.department = engineering
-Network = corporate
-        |
-        v
-Policy cannot establish a valid match
-        |
-        v
-      DENY
-```
-
-Similarly:
-
-```text
-User.department = engineering
-Resource.department = engineering
-Network = missing
-        |
-        v
-Corporate-network condition not satisfied
-        |
-        v
-      DENY
-```
-
-This is important because missing security information should not accidentally become an authorization grant.
-
----
-
-# 38. RBAC and ABAC Together
-
-The project now demonstrates two major authorization models.
-
-## RBAC
+RBAC:
 
 ```text
 Subject
@@ -1582,18 +1360,10 @@ Role
 Permission
    |
    v
-ALLOW / DENY
+Decision
 ```
 
-RBAC is useful when access can be expressed through stable organizational roles.
-
-Example:
-
-```text
-Alice → Developer → reports:read
-```
-
-## ABAC
+ABAC:
 
 ```text
 User attributes
@@ -1608,149 +1378,854 @@ Context
      Policy
        |
        v
-ALLOW / DENY
+    Decision
 ```
 
-ABAC is useful when authorization depends on dynamic or contextual information.
+RBAC is useful when permissions naturally map to organizational roles.
+
+ABAC is useful when access depends on richer contextual conditions.
+
+## ABAC Deliverable
+
+| Item | Status |
+|---|---|
+| ABAC domain model | Complete |
+| User attributes | Complete |
+| Resource attributes | Complete |
+| Action evaluation | Complete |
+| Context attributes | Complete |
+| Attribute comparison | Complete |
+| ALLOW / DENY decisions | Complete |
+| Default deny | Complete |
+| Automated tests | Complete |
+| Test evidence | 7 passed |
+| ABAC implementation | **Complete** |
+
+Detailed implementation and study notes:
+
+```text
+docs/abac.md
+```
+
+---
+
+# 31. ReBAC — Relationship-Based Access Control
+
+The authorization engine was subsequently extended with a separate **ReBAC implementation** for relationship-based resource sharing.
+
+ReBAC answers authorization questions based on relationships between subjects, groups, and resources rather than only static roles or attributes.
+
+The core relationship is represented as a tuple:
+
+```text
+(subject, relation, resource)
+```
+
+Example:
+
+```text
+(alice, owner, document:report-123)
+```
+
+This means:
+
+```text
+Alice
+  |
+  | owner
+  v
+document:report-123
+```
+
+Another example:
+
+```text
+(bob, editor, document:report-123)
+```
+
+## ReBAC Project Goal
+
+The goal is to implement relationship tuples and evaluate authorization based on the relationship between a subject and a specific resource.
+
+The ReBAC model is:
+
+```text
+Subject
+   |
+   | relationship
+   v
+Resource
+   |
+   v
+Authorization Decision
+```
+
+Unlike RBAC:
+
+```text
+Alice → Developer → reports:write
+```
+
+ReBAC evaluates the relationship directly:
+
+```text
+Alice → owner → document:report-123
+```
+
+The relationship determines the actions available to the subject.
+
+## ReBAC Relationship Model
+
+The implementation defines:
+
+```text
+RelationshipTuple
+├── subject
+├── relation
+└── resource
+```
+
+Example:
+
+```python
+RelationshipTuple(
+    "alice",
+    "owner",
+    "document:report-123",
+)
+```
+
+Conceptually:
+
+```text
+alice
+  |
+  | owner
+  v
+document:report-123
+```
+
+The tuple is immutable and hashable so it can safely be stored in a set.
+
+## Relationship Store
+
+ReBAC relationships are stored by `RelationshipStore`.
+
+The store supports:
+
+```text
+add()
+remove()
+exists()
+```
+
+Example:
+
+```python
+store.add(
+    RelationshipTuple(
+        "alice",
+        "owner",
+        "document:report-123",
+    )
+)
+```
+
+A relationship can then be queried:
+
+```python
+store.exists(
+    "alice",
+    "owner",
+    "document:report-123",
+)
+```
+
+Expected:
+
+```text
+True
+```
+
+A different subject:
+
+```python
+store.exists(
+    "bob",
+    "owner",
+    "document:report-123",
+)
+```
+
+returns:
+
+```text
+False
+```
+
+This demonstrates that relationships are resource-specific.
+
+## ReBAC Permission Mapping
+
+The v0.1 ReBAC implementation maps relationships to actions:
+
+```text
+owner
+├── read
+├── write
+└── delete
+
+editor
+├── read
+└── write
+
+viewer
+└── read
+```
+
+Therefore:
+
+```text
+Alice → owner → document
+```
+
+allows:
+
+```text
+read
+write
+delete
+```
+
+while:
+
+```text
+Bob → editor → document
+```
+
+allows:
+
+```text
+read
+write
+```
+
+but not:
+
+```text
+delete
+```
+
+And:
+
+```text
+Charlie → viewer → document
+```
+
+allows:
+
+```text
+read
+```
+
+but not:
+
+```text
+write
+delete
+```
+
+## ReBAC Authorization Flow
+
+```text
+Authorization Request
+        |
+        v
+      Subject
+        |
+        v
+   Resource + Action
+        |
+        v
+Relationship Store
+        |
+        v
+Find subject/resource relationship
+        |
+        v
+Relationship → Allowed Actions
+        |
+        v
+   +-----------+
+   |           |
+   v           v
+ ALLOW       DENY
+```
+
+Example:
+
+```text
+alice
+  |
+  | owner
+  v
+document:report-123
+  |
+  +---- read
+  +---- write
+  +---- delete
+```
+
+Request:
+
+```text
+alice -> delete -> document:report-123
+```
+
+Result:
+
+```text
+ALLOW
+```
+
+## Resource-Specific Relationships
+
+A major ReBAC property is that access can be specific to an individual resource.
+
+Example:
+
+```text
+alice → owner → document:report-123
+alice → viewer → document:design-456
+```
+
+Alice therefore has different access to different resources.
+
+For `report-123`:
+
+```text
+read   -> ALLOW
+write  -> ALLOW
+delete -> ALLOW
+```
+
+For `design-456`:
+
+```text
+read   -> ALLOW
+write  -> DENY
+delete -> DENY
+```
+
+This is different from a global role assignment because the relationship is attached directly to the resource.
+
+## Group Membership
+
+The implementation also supports group-based relationship inheritance.
 
 Example:
 
 ```text
 Alice
-department = engineering
-
-Report
-department = engineering
-
-Network
-corporate
-
-Action
-read
-
-        |
-        v
-      ALLOW
+  |
+  | member of
+  v
+group:engineering
+  |
+  | viewer
+  v
+document:report-123
 ```
 
----
-
-# 39. When to Use RBAC vs ABAC
-
-A practical decision guide:
-
-```text
-Can access be expressed cleanly as a role?
-                  |
-              YES | NO
-                  |  \
-                  v   v
-                RBAC  ABAC
-```
-
-Use **RBAC** when permissions are relatively stable:
-
-```text
-Developer → reports:read
-Admin     → reports:delete
-Auditor   → audit:read
-```
-
-Use **ABAC** when decisions depend on attributes or context:
-
-```text
-department
-classification
-network
-location
-device trust
-time
-risk
-clearance
-```
-
-In a mature enterprise IAM architecture, RBAC and ABAC can also be combined.
+The relationship chain means Alice inherits the group's access to the resource.
 
 For example:
 
 ```text
-User must have Developer role
-             AND
-user.department == resource.department
-             AND
+Group:
+group:engineering → viewer → document:report-123
+
+Membership:
+alice → member of → group:engineering
+```
+
+The engine can therefore resolve:
+
+```text
+alice → viewer → document:report-123
+```
+
+and authorize:
+
+```text
+alice → read → document:report-123
+```
+
+while still denying:
+
+```text
+alice → write → document:report-123
+alice → delete → document:report-123
+```
+
+This demonstrates an important ReBAC concept: **relationships can be composed to derive access**.
+
+## ReBAC Implementation
+
+The ReBAC implementation contains:
+
+```text
+src/authorization_engine/
+├── rebac_models.py
+├── rebac_store.py
+└── rebac_engine.py
+```
+
+### `rebac_models.py`
+
+Defines:
+
+```text
+RelationshipTuple
+GroupMembership
+```
+
+### `rebac_store.py`
+
+Maintains:
+
+```text
+Relationship tuples
+Group memberships
+```
+
+and provides relationship lookup operations.
+
+### `rebac_engine.py`
+
+Contains the authorization logic:
+
+```text
+ReBACEngine
+```
+
+Responsibilities include:
+
+```text
+✓ relationship lookup
+✓ resource-specific authorization
+✓ relationship-to-permission mapping
+✓ group membership resolution
+✓ default deny
+```
+
+Tests:
+
+```text
+tests/test_rebac.py
+```
+
+Detailed ReBAC documentation:
+
+```text
+docs/rebac.md
+```
+
+## ReBAC Test Evidence
+
+The ReBAC implementation contains **13 automated tests**.
+
+Run:
+
+```powershell
+pytest tests/test_rebac.py
+```
+
+Expected:
+
+```text
+collected 13 items
+
+tests	est_rebac.py ............. [100%]
+
+13 passed
+```
+
+The tests cover:
+
+```text
+✓ Owner can read
+✓ Owner can write
+✓ Owner can delete
+✓ Editor can read
+✓ Editor can write
+✓ Editor cannot delete
+✓ Viewer can read
+✓ Viewer cannot write
+✓ Viewer cannot delete
+✓ Unknown user is denied
+✓ Relationship is resource-specific
+✓ Same user can have different relationships with different resources
+✓ Group member inherits resource access
+```
+
+## Full Authorization Engine Verification
+
+Run the complete test suite:
+
+```powershell
+pytest
+```
+
+Current combined evidence:
+
+```text
+tests	est_abac.py .......       7 tests
+tests	est_rbac.py .........     9 tests
+tests	est_rebac.py ............. 13 tests
+
+29 passed
+```
+
+This verifies that the RBAC, ABAC, and ReBAC implementations coexist within the same authorization-engine project.
+
+## ReBAC vs RBAC vs ABAC
+
+### RBAC
+
+RBAC evaluates:
+
+```text
+Subject → Role → Permission
+```
+
+Example:
+
+```text
+Alice → Developer → reports:write
+```
+
+### ABAC
+
+ABAC evaluates:
+
+```text
+Subject attributes
++
+Resource attributes
++
+Action
++
+Context
+→ Policy → Decision
+```
+
+Example:
+
+```text
+Alice.department == report.department
++
 network == corporate
-             |
-             v
-           ALLOW
+→ ALLOW
 ```
 
----
+### ReBAC
 
-# 40. Current Authorization Engine Deliverables
+ReBAC evaluates:
 
-The authorization-engine project now contains:
+```text
+Subject → Relationship → Resource
+```
 
-| Capability | Status |
+Example:
+
+```text
+Alice → owner → document:report-123
+```
+
+A useful comparison is:
+
+```text
+RBAC
+Who are you assigned as?
+        |
+        v
+      Role
+
+ABAC
+What attributes/context apply?
+        |
+        v
+      Policy
+
+ReBAC
+How are you related to this resource?
+        |
+        v
+   Relationship
+```
+
+These models solve different authorization problems and can also be combined in production authorization systems.
+
+## ReBAC Security Principles
+
+The implementation follows:
+
+```text
+✓ Default deny
+✓ Explicit relationships
+✓ Resource-specific authorization
+✓ Deterministic evaluation
+✓ Immutable relationship tuples
+✓ Explicit relationship-to-action mapping
+✓ Unknown subjects denied
+✓ Unknown relationships denied
+✓ Automated negative-path testing
+```
+
+The engine does not infer arbitrary access.
+
+For example:
+
+```text
+viewer
+```
+
+does not automatically imply:
+
+```text
+write
+delete
+```
+
+and:
+
+```text
+editor
+```
+
+does not automatically imply:
+
+```text
+delete
+```
+
+## ReBAC Deliverable
+
+| Item | Status |
 |---|---|
-| RBAC domain model | Complete |
-| RBAC role management | Complete |
-| RBAC role assignment | Complete |
-| RBAC authorization evaluation | Complete |
-| RBAC default deny | Complete |
-| RBAC automated tests | Complete |
-| ABAC user attributes | Complete |
-| ABAC resource attributes | Complete |
-| ABAC action evaluation | Complete |
-| ABAC context attributes | Complete |
-| ABAC policy evaluation | Complete |
-| ABAC ALLOW / DENY decisions | Complete |
-| ABAC fail-closed behavior | Complete |
-| ABAC automated tests | Complete |
-| RBAC + ABAC regression suite | **16 tests passed** |
+| Relationship tuple model | Complete |
+| Relationship store | Complete |
+| Relationship lookup | Complete |
+| Owner relationship | Complete |
+| Editor relationship | Complete |
+| Viewer relationship | Complete |
+| Resource-specific access | Complete |
+| Group membership | Complete |
+| Group-derived access | Complete |
+| Default deny | Complete |
+| Negative authorization tests | Complete |
+| Automated tests | Complete |
+| Test evidence | 13 passed |
+| ReBAC implementation | **Complete** |
+
+Detailed implementation and study notes:
+
+```text
+docs/rebac.md
+```
 
 ---
 
-# 41. Updated Project Status
+# 32. Authorization Models — Current Project Status
+
+The authorization-engine project now demonstrates three major authorization models:
 
 ```text
-┌──────────────────────────────────────────┐
-│       AUTHORIZATION ENGINE               │
-├──────────────────────────────────────────┤
-│                                          │
-│  RBAC                                    │
-│  Subject → Role → Permission             │
-│  Status: COMPLETE                        │
-│  Tests: 9 passed                         │
-│                                          │
-│  ABAC                                    │
-│  User + Resource + Action + Context      │
-│  Status: COMPLETE                        │
-│  Tests: 7 passed                         │
-│                                          │
-│  Total regression tests: 16 passed       │
-│                                          │
-└──────────────────────────────────────────┘
+                    Authorization Engine
+                            |
+            +---------------+---------------+
+            |               |               |
+            v               v               v
+           RBAC            ABAC            ReBAC
+            |               |               |
+            v               v               v
+     Role-based       Attribute-based   Relationship-based
+       access             access             access
+            |               |               |
+            +---------------+---------------+
+                            |
+                            v
+                       ALLOW / DENY
 ```
 
-The project currently demonstrates two distinct authorization models:
+### RBAC
 
 ```text
-Authorization
-     |
-     +-------------------+
-     |                   |
-     v                   v
-    RBAC                ABAC
-     |                   |
-Role-based          Attribute-based
-authorization       authorization
+Subject → Role → Permission
 ```
 
-**ReBAC remains a separate lab and is not included in the ABAC implementation.**
-
-Detailed notes:
+Evidence:
 
 ```text
-docs/rbac.md
-docs/abac.md
+9 tests passed
 ```
+
+### ABAC
+
+```text
+User attributes
++
+Resource attributes
++
+Action
++
+Context
+→ Policy → Decision
+```
+
+Evidence:
+
+```text
+7 tests passed
+```
+
+### ReBAC
+
+```text
+Subject → Relationship → Resource
+```
+
+Evidence:
+
+```text
+13 tests passed
+```
+
+Combined:
+
+```text
+9 + 7 + 13 = 29 tests
+```
+
+Current verification:
+
+```text
+29 passed
+```
+
+The project therefore demonstrates three complementary authorization paradigms within a single Python authorization-engine codebase.
+
+## Current Project Structure
+
+```text
+authorization-engine/
+│
+├── docs/
+│   ├── rbac.md
+│   ├── abac.md
+│   └── rebac.md
+│
+├── src/
+│   └── authorization_engine/
+│       ├── __init__.py
+│       │
+│       ├── models.py
+│       ├── engine.py
+│       │
+│       ├── abac_models.py
+│       ├── abac_engine.py
+│       │
+│       ├── rebac_models.py
+│       ├── rebac_store.py
+│       └── rebac_engine.py
+│
+├── tests/
+│   ├── test_rbac.py
+│   ├── test_abac.py
+│   └── test_rebac.py
+│
+├── .gitignore
+├── pyproject.toml
+└── README.md
+```
+
+## Authorization Evolution
+
+The project has evolved from a simple RBAC engine into a small authorization-model laboratory:
+
+```text
+RBAC v0.1
+   |
+   | Role-based authorization
+   v
+ABAC
+   |
+   | Attribute + context based authorization
+   v
+ReBAC
+   |
+   | Relationship + resource based authorization
+   v
+Advanced Authorization
+```
+
+The implementations remain separated by module so that the behavior and trade-offs of each authorization model can be studied independently.
+
+---
+
+# 33. Overall Interview Explanation
+
+A concise explanation of the current authorization-engine project:
+
+> I built a lightweight Python authorization engine and evolved it across three authorization models: RBAC, ABAC, and ReBAC. RBAC evaluates explicit permissions through role assignments, ABAC evaluates subject, resource, action, and environmental attributes, and ReBAC evaluates relationships between subjects, groups, and specific resources. Each model follows a default-deny approach and is independently tested with positive and negative authorization scenarios. The project currently has 29 automated pytest tests covering the three models.
+
+---
+
+# 34. Current Deliverables
+
+| Authorization Model | Implementation | Documentation | Tests | Status |
+|---|---|---|---:|---|
+| RBAC | `engine.py`, `models.py` | `docs/rbac.md` | 9 | **Complete** |
+| ABAC | `abac_engine.py`, `abac_models.py` | `docs/abac.md` | 7 | **Complete** |
+| ReBAC | `rebac_engine.py`, `rebac_models.py`, `rebac_store.py` | `docs/rebac.md` | 13 | **Complete** |
+| Combined engine | All modules | `README.md` | 29 | **Complete** |
+
+Final verification:
+
+```powershell
+pytest
+```
+
+Expected:
+
+```text
+tests	est_abac.py .......       [ 24%]
+tests	est_rbac.py .........     [ 55%]
+tests	est_rebac.py ............. [100%]
+
+29 passed
+```
+
+The authorization-engine project now demonstrates:
+
+```text
+RBAC
++
+ABAC
++
+ReBAC
++
+Default Deny
++
+Explicit Authorization
++
+Resource-specific Access
++
+Context-aware Access
++
+Relationship-based Sharing
++
+Automated Security Testing
+```
+
