@@ -181,7 +181,8 @@ Authorization flow:
                           |
                           v
                 Permission Matching
-                     /                             YES           NO
+                     /          \
+                   YES           NO
                     |             |
                     v             v
                   ALLOW        Check next role
@@ -404,7 +405,9 @@ Example:
 
 ```text
                     Alice
-                   /                       /                        v         v
+                   /     \
+                  /       \
+                 v         v
             Developer     Auditor
                 |             |
                 v             v
@@ -485,9 +488,10 @@ They are separate concerns.
                  |
                  | What can you do?
                  v
-           RBAC Engine
-              /                    v         v
-          ALLOW      DENY
+          RBAC Engine
+             /       \
+            v         v
+         ALLOW      DENY
 ```
 
 Authentication answers:
@@ -524,7 +528,8 @@ In a production environment, authentication and authorization could be separated
                       |
                       v
                  RBAC Decision
-                  /                          v           v
+                  /         \
+                 v           v
               ALLOW         DENY
                  |           |
                  v           v
@@ -625,7 +630,7 @@ Successful verification:
 ```text
 collected 9 items
 
-tests\test_rbac.py ......... [100%]
+tests	est_rbac.py ......... [100%]
 
 9 passed
 ```
@@ -781,11 +786,11 @@ Example RBAC:
 ```text
 Alice
   |
-  Developer
+Developer
   |
-  reports:write
+reports:write
   |
-  ALLOW
+ALLOW
 ```
 
 Example ABAC:
@@ -864,7 +869,8 @@ authorize(subject, resource, action)
                 |
                 v
       Does role contain permission?
-             /                      YES            NO
+             /           \
+           YES            NO
             |              |
             v              v
          ALLOW       Check next role
@@ -923,7 +929,7 @@ Expected:
 ============================= test session starts =============================
 collected 9 items
 
-tests\test_rbac.py ......... [100%]
+tests	est_rbac.py ......... [100%]
 
 ============================== 9 passed ======================================
 ```
@@ -1130,1066 +1136,710 @@ The detailed implementation and study notes are available in:
 docs/rbac.md
 ```
 
+
 ---
 
-# 30. ABAC — Attribute-Based Access Control
+# 30. Policy Versioning and Audit Trail
 
-The authorization engine was extended after RBAC v0.1 with an independent **ABAC implementation**.
+The authorization engine has been extended with **policy versioning and an audit trail**.
 
-ABAC evaluates access using attributes of:
+This build addresses the policy-management requirement:
 
-```text
-User / Subject
-       +
-Resource
-       +
-Action
-       +
-Environment / Context
-       |
-       v
-     Policy
-       |
-       v
-ALLOW / DENY
-```
-
-The ABAC implementation is intentionally separate from the original RBAC engine so that each authorization model can be understood and tested independently.
-
-## ABAC Project Goal
-
-The goal is to implement attribute-based authorization where access is determined by comparing user attributes, resource attributes, requested actions, and contextual attributes.
-
-Example:
-
-```text
-User:
-  department = engineering
-
-Resource:
-  department = engineering
-
-Context:
-  network = corporate
-
-Action:
-  read
-```
-
-Decision:
-
-```text
-department matches
-        +
-corporate network
-        |
-        v
-      ALLOW
-```
-
-If the user and resource departments do not match:
-
-```text
-User department != Resource department
-        |
-        v
-      DENY
-```
-
-## ABAC Components
-
-```text
-ABACRequest
-├── User
-│   └── attributes
-├── Resource
-│   └── attributes
-├── Action
-└── AccessContext
-    └── attributes
-```
-
-The implementation contains:
-
-```text
-src/authorization_engine/
-├── abac_models.py
-└── abac_engine.py
-```
-
-Tests:
-
-```text
-tests/
-├── test_rbac.py
-├── test_abac.py
-└── test_rebac.py
-```
-
-Detailed ABAC documentation:
-
-```text
-docs/abac.md
-```
-
-## ABAC Implementation
-
-The ABAC domain model includes:
-
-```text
-User
-Resource
-AccessContext
-ABACRequest
-ABACDecision
-```
-
-A simplified request looks like:
-
-```python
-user = User(
-    "alice",
-    {"department": "engineering"},
-)
-
-resource = Resource(
-    "report-123",
-    {"department": "engineering"},
-)
-
-context = AccessContext(
-    {"network": "corporate"},
-)
-
-request = ABACRequest(
-    user,
-    resource,
-    "read",
-    context,
-)
-```
-
-The authorization engine evaluates the request using the attributes.
-
-## ABAC Example
-
-Successful authorization:
-
-```text
-User department:     engineering
-Resource department: engineering
-Network:             corporate
-Action:              read
-
-                 |
-                 v
-
-              ALLOW
-```
-
-Failed authorization:
-
-```text
-User department:     engineering
-Resource department: finance
-Network:             corporate
-Action:              read
-
-                 |
-                 v
-
-               DENY
-```
-
-The implementation therefore demonstrates that ABAC can make authorization decisions without relying solely on static role membership.
-
-## ABAC Test Evidence
-
-The ABAC implementation contains **7 automated tests**.
-
-Run:
-
-```powershell
-pytest tests/test_abac.py
-```
-
-Expected:
-
-```text
-collected 7 items
-
-tests	est_abac.py ....... [100%]
-
-7 passed
-```
-
-Full project verification after adding ABAC:
-
-```powershell
-pytest
-```
-
-The combined authorization engine test suite includes both RBAC and ABAC tests.
-
-## ABAC Design Principles
-
-The implementation follows:
-
-```text
-✓ Attribute-based decisions
-✓ Explicit policy checks
-✓ Default deny
-✓ Context-aware authorization
-✓ Resource/user attribute comparison
-✓ Negative authorization tests
-✓ Deterministic decisions
-✓ Automated verification
-```
-
-## ABAC vs RBAC
-
-RBAC:
-
-```text
-Subject
-   |
-   v
-Role
-   |
-   v
-Permission
-   |
-   v
-Decision
-```
-
-ABAC:
-
-```text
-User attributes
-       +
-Resource attributes
-       +
-Action
-       +
-Context
-       |
-       v
-     Policy
-       |
-       v
-    Decision
-```
-
-RBAC is useful when permissions naturally map to organizational roles.
-
-ABAC is useful when access depends on richer contextual conditions.
-
-## ABAC Deliverable
-
-| Item | Status |
+| Focus | Policy |
 |---|---|
-| ABAC domain model | Complete |
-| User attributes | Complete |
-| Resource attributes | Complete |
-| Action evaluation | Complete |
-| Context attributes | Complete |
-| Attribute comparison | Complete |
-| ALLOW / DENY decisions | Complete |
-| Default deny | Complete |
-| Automated tests | Complete |
-| Test evidence | 7 passed |
-| ABAC implementation | **Complete** |
+| Task | Add policy versioning and audit trail |
+| Type | Build |
+| Deliverable / Evidence | Versioned policy store |
 
-Detailed implementation and study notes:
+The implementation introduces a versioned policy lifecycle while preserving the existing RBAC, ABAC, and ReBAC components.
+
+## 30.1 Policy Version Model
+
+Each policy version is represented by a `PolicyVersion` object containing:
 
 ```text
-docs/abac.md
-```
-
----
-
-# 31. ReBAC — Relationship-Based Access Control
-
-The authorization engine was subsequently extended with a separate **ReBAC implementation** for relationship-based resource sharing.
-
-ReBAC answers authorization questions based on relationships between subjects, groups, and resources rather than only static roles or attributes.
-
-The core relationship is represented as a tuple:
-
-```text
-(subject, relation, resource)
-```
-
-Example:
-
-```text
-(alice, owner, document:report-123)
-```
-
-This means:
-
-```text
-Alice
-  |
-  | owner
-  v
-document:report-123
-```
-
-Another example:
-
-```text
-(bob, editor, document:report-123)
-```
-
-## ReBAC Project Goal
-
-The goal is to implement relationship tuples and evaluate authorization based on the relationship between a subject and a specific resource.
-
-The ReBAC model is:
-
-```text
-Subject
-   |
-   | relationship
-   v
-Resource
-   |
-   v
-Authorization Decision
-```
-
-Unlike RBAC:
-
-```text
-Alice → Developer → reports:write
-```
-
-ReBAC evaluates the relationship directly:
-
-```text
-Alice → owner → document:report-123
-```
-
-The relationship determines the actions available to the subject.
-
-## ReBAC Relationship Model
-
-The implementation defines:
-
-```text
-RelationshipTuple
-├── subject
-├── relation
-└── resource
-```
-
-Example:
-
-```python
-RelationshipTuple(
-    "alice",
-    "owner",
-    "document:report-123",
-)
+policy_id
+version
+rule
+created_at
+created_by
 ```
 
 Conceptually:
 
 ```text
-alice
+Policy
   |
-  | owner
-  v
-document:report-123
+  +-- Version 1
+  |     |
+  |     +-- Rule
+  |     +-- Created timestamp
+  |     +-- Created by
+  |
+  +-- Version 2
+        |
+        +-- Rule
+        +-- Created timestamp
+        +-- Created by
 ```
 
-The tuple is immutable and hashable so it can safely be stored in a set.
+Example:
 
-## Relationship Store
+```python
+PolicyVersion(
+    "document-read",
+    1,
+    "alice can read report-123",
+    timestamp,
+    "admin",
+)
+```
 
-ReBAC relationships are stored by `RelationshipStore`.
+The model is immutable using a frozen dataclass, preventing accidental mutation of historical policy records.
+
+## 30.2 Versioned Policy Store
+
+`VersionedPolicyStore` maintains policy history by `policy_id`.
 
 The store supports:
 
 ```text
-add()
-remove()
-exists()
-```
-
-Example:
-
-```python
-store.add(
-    RelationshipTuple(
-        "alice",
-        "owner",
-        "document:report-123",
-    )
-)
-```
-
-A relationship can then be queried:
-
-```python
-store.exists(
-    "alice",
-    "owner",
-    "document:report-123",
-)
-```
-
-Expected:
-
-```text
-True
-```
-
-A different subject:
-
-```python
-store.exists(
-    "bob",
-    "owner",
-    "document:report-123",
-)
-```
-
-returns:
-
-```text
-False
-```
-
-This demonstrates that relationships are resource-specific.
-
-## ReBAC Permission Mapping
-
-The v0.1 ReBAC implementation maps relationships to actions:
-
-```text
-owner
-├── read
-├── write
-└── delete
-
-editor
-├── read
-└── write
-
-viewer
-└── read
-```
-
-Therefore:
-
-```text
-Alice → owner → document
-```
-
-allows:
-
-```text
-read
-write
-delete
-```
-
-while:
-
-```text
-Bob → editor → document
-```
-
-allows:
-
-```text
-read
-write
-```
-
-but not:
-
-```text
-delete
-```
-
-And:
-
-```text
-Charlie → viewer → document
-```
-
-allows:
-
-```text
-read
-```
-
-but not:
-
-```text
-write
-delete
-```
-
-## ReBAC Authorization Flow
-
-```text
-Authorization Request
-        |
-        v
-      Subject
-        |
-        v
-   Resource + Action
-        |
-        v
-Relationship Store
-        |
-        v
-Find subject/resource relationship
-        |
-        v
-Relationship → Allowed Actions
-        |
-        v
-   +-----------+
-   |           |
-   v           v
- ALLOW       DENY
+add_version()
+get_latest()
+get_version()
+list_versions()
 ```
 
 Example:
 
 ```text
-alice
-  |
-  | owner
-  v
-document:report-123
-  |
-  +---- read
-  +---- write
-  +---- delete
+document-read
+
+Version 1
+    alice can read report-123
+
+Version 2
+    alice and bob can read report-123
 ```
 
-Request:
+The latest version is explicitly retrievable:
 
 ```text
-alice -> delete -> document:report-123
+get_latest("document-read")
+    |
+    v
+Version 2
 ```
 
-Result:
+A historical version can also be retrieved:
 
 ```text
-ALLOW
+get_version("document-read", 1)
+    |
+    v
+Version 1
 ```
 
-## Resource-Specific Relationships
-
-A major ReBAC property is that access can be specific to an individual resource.
-
-Example:
+The complete version history can be retrieved:
 
 ```text
-alice → owner → document:report-123
-alice → viewer → document:design-456
+list_versions("document-read")
+    |
+    +-- Version 1
+    +-- Version 2
 ```
 
-Alice therefore has different access to different resources.
+## 30.3 Sequential Versioning
 
-For `report-123`:
-
-```text
-read   -> ALLOW
-write  -> ALLOW
-delete -> ALLOW
-```
-
-For `design-456`:
-
-```text
-read   -> ALLOW
-write  -> DENY
-delete -> DENY
-```
-
-This is different from a global role assignment because the relationship is attached directly to the resource.
-
-## Group Membership
-
-The implementation also supports group-based relationship inheritance.
-
-Example:
-
-```text
-Alice
-  |
-  | member of
-  v
-group:engineering
-  |
-  | viewer
-  v
-document:report-123
-```
-
-The relationship chain means Alice inherits the group's access to the resource.
+Policy versions must be created sequentially.
 
 For example:
 
 ```text
-Group:
-group:engineering → viewer → document:report-123
-
-Membership:
-alice → member of → group:engineering
+Version 1
+   |
+   v
+Version 2
+   |
+   v
+Version 3
 ```
 
-The engine can therefore resolve:
+Attempting to create version 3 when version 2 does not exist is rejected.
+
+Example evidence:
 
 ```text
-alice → viewer → document:report-123
+ValueError: Policy versions must be sequential
 ```
 
-and authorize:
+This prevents gaps in the policy history and keeps the version sequence deterministic.
+
+## 30.4 Audit Event Model
+
+Policy lifecycle events are represented by `AuditEvent`.
+
+The event contains:
 
 ```text
-alice → read → document:report-123
-```
-
-while still denying:
-
-```text
-alice → write → document:report-123
-alice → delete → document:report-123
-```
-
-This demonstrates an important ReBAC concept: **relationships can be composed to derive access**.
-
-## ReBAC Implementation
-
-The ReBAC implementation contains:
-
-```text
-src/authorization_engine/
-├── rebac_models.py
-├── rebac_store.py
-└── rebac_engine.py
-```
-
-### `rebac_models.py`
-
-Defines:
-
-```text
-RelationshipTuple
-GroupMembership
-```
-
-### `rebac_store.py`
-
-Maintains:
-
-```text
-Relationship tuples
-Group memberships
-```
-
-and provides relationship lookup operations.
-
-### `rebac_engine.py`
-
-Contains the authorization logic:
-
-```text
-ReBACEngine
-```
-
-Responsibilities include:
-
-```text
-✓ relationship lookup
-✓ resource-specific authorization
-✓ relationship-to-permission mapping
-✓ group membership resolution
-✓ default deny
-```
-
-Tests:
-
-```text
-tests/test_rebac.py
-```
-
-Detailed ReBAC documentation:
-
-```text
-docs/rebac.md
-```
-
-## ReBAC Test Evidence
-
-The ReBAC implementation contains **13 automated tests**.
-
-Run:
-
-```powershell
-pytest tests/test_rebac.py
-```
-
-Expected:
-
-```text
-collected 13 items
-
-tests	est_rebac.py ............. [100%]
-
-13 passed
-```
-
-The tests cover:
-
-```text
-✓ Owner can read
-✓ Owner can write
-✓ Owner can delete
-✓ Editor can read
-✓ Editor can write
-✓ Editor cannot delete
-✓ Viewer can read
-✓ Viewer cannot write
-✓ Viewer cannot delete
-✓ Unknown user is denied
-✓ Relationship is resource-specific
-✓ Same user can have different relationships with different resources
-✓ Group member inherits resource access
-```
-
-## Full Authorization Engine Verification
-
-Run the complete test suite:
-
-```powershell
-pytest
-```
-
-Current combined evidence:
-
-```text
-tests	est_abac.py .......       7 tests
-tests	est_rbac.py .........     9 tests
-tests	est_rebac.py ............. 13 tests
-
-29 passed
-```
-
-This verifies that the RBAC, ABAC, and ReBAC implementations coexist within the same authorization-engine project.
-
-## ReBAC vs RBAC vs ABAC
-
-### RBAC
-
-RBAC evaluates:
-
-```text
-Subject → Role → Permission
+policy_id
+version
+action
+actor
+timestamp
 ```
 
 Example:
 
-```text
-Alice → Developer → reports:write
+```python
+AuditEvent(
+    "document-read",
+    2,
+    "policy_created",
+    "admin",
+    timestamp,
+)
 ```
 
-### ABAC
-
-ABAC evaluates:
+This provides the minimum information required to answer:
 
 ```text
-Subject attributes
-+
-Resource attributes
-+
-Action
-+
-Context
-→ Policy → Decision
+What policy changed?
+Which version?
+What happened?
+Who performed the action?
+When did it happen?
 ```
+
+## 30.5 Audit Store
+
+`AuditStore` records policy lifecycle events.
+
+It supports:
+
+```text
+record()
+list_events()
+list_policy_events()
+```
+
+Example audit history:
+
+```text
+document-read
+    |
+    +-- Version 1
+    |     action: policy_created
+    |     actor: admin
+    |
+    +-- Version 2
+          action: policy_created
+          actor: security-admin
+```
+
+Policy-specific audit history can be retrieved independently:
+
+```text
+list_policy_events("document-read")
+```
+
+This keeps the audit trail queryable by policy.
+
+## 30.6 Policy Manager
+
+`PolicyManager` coordinates policy version creation and auditing.
+
+Architecture:
+
+```text
+                PolicyManager
+                      |
+          +-----------+-----------+
+          |                       |
+          v                       v
+ VersionedPolicyStore         AuditStore
+          |                       |
+          v                       v
+ Policy Versions              Audit Events
+```
+
+When a new policy version is created:
+
+```text
+Create policy version
+        |
+        v
+Determine next version
+        |
+        v
+Create PolicyVersion
+        |
+        +--------------------+
+        |                    |
+        v                    v
+Policy Store             Audit Store
+        |                    |
+        v                    v
+Persist version         Record event
+```
+
+The manager therefore provides a single coordination point for policy creation and its corresponding audit event.
+
+## 30.7 Creating Policy Versions
+
+Example:
+
+```python
+from authorization_engine.policy_manager import PolicyManager
+from authorization_engine.policy_store import VersionedPolicyStore
+from authorization_engine.audit_store import AuditStore
+
+manager = PolicyManager(
+    VersionedPolicyStore(),
+    AuditStore(),
+)
+
+p1 = manager.create_version(
+    "document-read",
+    "alice can read report-123",
+    "admin",
+)
+
+p2 = manager.create_version(
+    "document-read",
+    "alice and bob can read report-123",
+    "security-admin",
+)
+```
+
+The resulting state is:
+
+```text
+document-read
+
+v1:
+alice can read report-123
+created_by: admin
+
+v2:
+alice and bob can read report-123
+created_by: security-admin
+```
+
+The latest policy is version 2.
+
+## 30.8 Historical Version Retrieval
+
+Historical versions remain available after newer versions are created.
+
+Example:
+
+```python
+manager.policy_store.get_version(
+    "document-read",
+    1,
+)
+```
+
+returns the original version rather than the current version.
+
+This is important for:
+
+- policy investigation
+- compliance review
+- change analysis
+- incident response
+- rollback preparation
+
+## 30.9 Rollback Semantics
+
+Rollback is implemented as **creation of a new version from a historical version**, rather than destructive replacement of the current version.
 
 Example:
 
 ```text
-Alice.department == report.department
-+
-network == corporate
-→ ALLOW
+Version 1
+alice can read report-123
+
+Version 2
+alice and bob can read report-123
+
+Rollback to Version 1
+
+Version 3
+alice can read report-123
 ```
 
-### ReBAC
-
-ReBAC evaluates:
+The history therefore remains:
 
 ```text
-Subject → Relationship → Resource
+v1 → v2 → v3
 ```
 
-Example:
+rather than deleting version 2.
+
+This is an important policy-governance property because historical state remains auditable.
+
+The rollback actor is recorded as the creator of the new version.
+
+## 30.10 Audit Evidence
+
+Example policy history:
 
 ```text
-Alice → owner → document:report-123
+Policy: document-read
+
+Version 1
+  Rule: alice can read report-123
+  Actor: admin
+  Action: policy_created
+
+Version 2
+  Rule: alice and bob can read report-123
+  Actor: security-admin
+  Action: policy_created
 ```
 
-A useful comparison is:
+Example audit records:
 
 ```text
-RBAC
-Who are you assigned as?
-        |
-        v
-      Role
+AuditEvent(
+    policy_id='document-read',
+    version=1,
+    action='policy_created',
+    actor='admin',
+    timestamp=...
+)
 
-ABAC
-What attributes/context apply?
-        |
-        v
-      Policy
-
-ReBAC
-How are you related to this resource?
-        |
-        v
-   Relationship
+AuditEvent(
+    policy_id='document-read',
+    version=2,
+    action='policy_created',
+    actor='security-admin',
+    timestamp=...
+)
 ```
 
-These models solve different authorization problems and can also be combined in production authorization systems.
+This provides concrete evidence that policy changes are associated with both a version and an actor.
 
-## ReBAC Security Principles
+## 30.11 Project Structure
 
-The implementation follows:
-
-```text
-✓ Default deny
-✓ Explicit relationships
-✓ Resource-specific authorization
-✓ Deterministic evaluation
-✓ Immutable relationship tuples
-✓ Explicit relationship-to-action mapping
-✓ Unknown subjects denied
-✓ Unknown relationships denied
-✓ Automated negative-path testing
-```
-
-The engine does not infer arbitrary access.
-
-For example:
-
-```text
-viewer
-```
-
-does not automatically imply:
-
-```text
-write
-delete
-```
-
-and:
-
-```text
-editor
-```
-
-does not automatically imply:
-
-```text
-delete
-```
-
-## ReBAC Deliverable
-
-| Item | Status |
-|---|---|
-| Relationship tuple model | Complete |
-| Relationship store | Complete |
-| Relationship lookup | Complete |
-| Owner relationship | Complete |
-| Editor relationship | Complete |
-| Viewer relationship | Complete |
-| Resource-specific access | Complete |
-| Group membership | Complete |
-| Group-derived access | Complete |
-| Default deny | Complete |
-| Negative authorization tests | Complete |
-| Automated tests | Complete |
-| Test evidence | 13 passed |
-| ReBAC implementation | **Complete** |
-
-Detailed implementation and study notes:
-
-```text
-docs/rebac.md
-```
-
----
-
-# 32. Authorization Models — Current Project Status
-
-The authorization-engine project now demonstrates three major authorization models:
-
-```text
-                    Authorization Engine
-                            |
-            +---------------+---------------+
-            |               |               |
-            v               v               v
-           RBAC            ABAC            ReBAC
-            |               |               |
-            v               v               v
-     Role-based       Attribute-based   Relationship-based
-       access             access             access
-            |               |               |
-            +---------------+---------------+
-                            |
-                            v
-                       ALLOW / DENY
-```
-
-### RBAC
-
-```text
-Subject → Role → Permission
-```
-
-Evidence:
-
-```text
-9 tests passed
-```
-
-### ABAC
-
-```text
-User attributes
-+
-Resource attributes
-+
-Action
-+
-Context
-→ Policy → Decision
-```
-
-Evidence:
-
-```text
-7 tests passed
-```
-
-### ReBAC
-
-```text
-Subject → Relationship → Resource
-```
-
-Evidence:
-
-```text
-13 tests passed
-```
-
-Combined:
-
-```text
-9 + 7 + 13 = 29 tests
-```
-
-Current verification:
-
-```text
-29 passed
-```
-
-The project therefore demonstrates three complementary authorization paradigms within a single Python authorization-engine codebase.
-
-## Current Project Structure
+The policy versioning and audit implementation adds:
 
 ```text
 authorization-engine/
 │
-├── docs/
-│   ├── rbac.md
-│   ├── abac.md
-│   └── rebac.md
-│
 ├── src/
 │   └── authorization_engine/
-│       ├── __init__.py
-│       │
-│       ├── models.py
-│       ├── engine.py
-│       │
-│       ├── abac_models.py
-│       ├── abac_engine.py
-│       │
-│       ├── rebac_models.py
-│       ├── rebac_store.py
-│       └── rebac_engine.py
+│       ├── audit_models.py
+│       ├── audit_store.py
+│       ├── policy_manager.py
+│       ├── policy_models.py
+│       └── policy_store.py
 │
-├── tests/
-│   ├── test_rbac.py
-│   ├── test_abac.py
-│   └── test_rebac.py
-│
-├── .gitignore
-├── pyproject.toml
-└── README.md
+└── tests/
+    ├── test_audit_store.py
+    ├── test_policy_manager.py
+    └── test_policy_store.py
 ```
 
-## Authorization Evolution
+Existing RBAC, ABAC, and ReBAC files remain part of the project.
 
-The project has evolved from a simple RBAC engine into a small authorization-model laboratory:
+## 30.12 Test Coverage
+
+The policy versioning implementation is covered by dedicated automated tests.
+
+Current project-wide verification after implementing this feature:
 
 ```text
-RBAC v0.1
-   |
-   | Role-based authorization
-   v
-ABAC
-   |
-   | Attribute + context based authorization
-   v
-ReBAC
-   |
-   | Relationship + resource based authorization
-   v
-Advanced Authorization
+collected 53 items
+
+tests/test_abac.py .........
+tests/test_audit_store.py .....
+tests/test_policy_manager.py ........
+tests/test_policy_store.py ...........
+tests/test_rbac.py .........
+tests/test_rebac.py .............
+
+53 passed
 ```
 
-The implementations remain separated by module so that the behavior and trade-offs of each authorization model can be studied independently.
+The dedicated test suites verify:
+
+```text
+✓ Policy version creation
+✓ Sequential version enforcement
+✓ Latest version retrieval
+✓ Historical version retrieval
+✓ Version history listing
+✓ Missing policy handling
+✓ Audit event creation
+✓ Audit event recording
+✓ Policy-specific audit history
+✓ Policy manager integration
+✓ Rollback from historical version
+✓ Rollback creates a new version
+✓ Existing RBAC behavior remains passing
+✓ Existing ABAC behavior remains passing
+✓ Existing ReBAC behavior remains passing
+```
+
+The final project-wide evidence is:
+
+```text
+53 passed in 0.13s
+```
+
+## 30.13 Manual Verification Evidence
+
+Policy version creation was manually verified with:
+
+```powershell
+python -c "from authorization_engine.policy_models import PolicyVersion; from authorization_engine.policy_store import VersionedPolicyStore; from datetime import datetime, timezone; store=VersionedPolicyStore(); now=datetime.now(timezone.utc); store.add_version(PolicyVersion('document-read',1,'alice can read report-123',now,'admin')); store.add_version(PolicyVersion('document-read',2,'alice and bob can read report-123',now,'admin')); print('latest:',store.get_latest('document-read')); print('v1:',store.get_version('document-read',1)); print('versions:',store.list_versions('document-read'))"
+```
+
+Observed result:
+
+```text
+latest: PolicyVersion(... version=2 ...)
+v1: PolicyVersion(... version=1 ...)
+versions: [PolicyVersion(... version=1 ...), PolicyVersion(... version=2 ...)]
+```
+
+Sequential version enforcement was also verified. Attempting to add version 3 immediately after version 1 produced:
+
+```text
+ValueError: Policy versions must be sequential
+```
+
+Audit recording was manually verified:
+
+```text
+all:
+[
+  AuditEvent(... version=1, action='policy_created', actor='admin' ...),
+  AuditEvent(... version=2, action='policy_created', actor='admin' ...)
+]
+
+policy:
+[
+  AuditEvent(... version=1, action='policy_created', actor='admin' ...),
+  AuditEvent(... version=2, action='policy_created', actor='admin' ...)
+]
+```
+
+Policy manager integration was also verified:
+
+```text
+latest:
+PolicyVersion(
+    policy_id='document-read',
+    version=2,
+    rule='alice and bob can read report-123',
+    ...
+    created_by='security-admin'
+)
+
+audit:
+[
+    AuditEvent(... version=1, action='policy_created', actor='admin' ...),
+    AuditEvent(... version=2, action='policy_created', actor='security-admin' ...)
+]
+```
+
+Rollback was tested to ensure that restoring an historical policy creates a new version rather than overwriting history.
+
+## 30.14 Policy Governance Model
+
+The implementation now supports the following lifecycle:
+
+```text
+Policy Author
+     |
+     v
+Create Version
+     |
+     v
+Versioned Policy Store
+     |
+     +------------------+
+     |                  |
+     v                  v
+Current Version      Historical Versions
+     |
+     v
+Authorization / Policy Evaluation
+     |
+     v
+Audit Trail
+     |
+     v
+Investigation / Compliance / Rollback
+```
+
+The important architectural property is that **policy history is append-oriented**.
+
+A historical version is not silently overwritten.
+
+Instead:
+
+```text
+Current v2
+   |
+   | rollback to v1
+   v
+New v3 containing v1 rule
+```
+
+This preserves the audit history:
+
+```text
+v1 → v2 → v3
+```
+
+## 30.15 Security and IAM Significance
+
+Policy versioning and audit logging are important capabilities in enterprise authorization systems.
+
+Versioning provides:
+
+- traceability of policy changes
+- historical reconstruction
+- controlled rollback
+- deterministic policy state
+- easier incident investigation
+
+Audit events provide:
+
+- actor attribution
+- timestamped change history
+- policy/version correlation
+- evidence for security review
+- a foundation for compliance controls
+
+Together they move the project beyond a simple authorization evaluator toward a more realistic **policy management architecture**.
+
+## 30.16 Deliverable Status
+
+| Item | Status |
+|---|---|
+| Policy version model | Complete |
+| Versioned policy store | Complete |
+| Sequential version enforcement | Complete |
+| Latest policy retrieval | Complete |
+| Historical policy retrieval | Complete |
+| Policy version listing | Complete |
+| Audit event model | Complete |
+| Audit event store | Complete |
+| Policy manager | Complete |
+| Policy creation auditing | Complete |
+| Historical rollback | Complete |
+| Rollback as new version | Complete |
+| Dedicated automated tests | Complete |
+| Full regression suite | **53 passed** |
+| Policy versioning and audit trail | **Complete** |
+
+## 30.17 Interview Explanation
+
+A concise explanation of this extension:
+
+> I extended the authorization engine with a versioned policy store and an audit trail. Each policy has an immutable, sequential version history containing the policy rule, creator, and timestamp. Policy lifecycle events are recorded as audit events tied to the policy version and actor. I also implemented rollback by creating a new version from a historical version instead of overwriting history. The feature is covered by dedicated pytest tests and the complete authorization-engine regression suite passes.
+
+## 30.18 Architecture Interview Questions
+
+### Q1. Why version policies?
+
+Policy changes affect authorization behavior, so historical policy state needs to be reconstructable for investigation, compliance, and rollback.
+
+### Q2. Why not overwrite the current policy?
+
+Overwriting destroys historical state. Versioning preserves the complete change history.
+
+### Q3. Why must versions be sequential?
+
+Sequential versions provide a deterministic and gap-free policy history and prevent accidental version jumps.
+
+### Q4. How does rollback work?
+
+Rollback retrieves the historical version and creates a new current version containing the historical rule.
+
+```text
+v1 → v2 → rollback(v1) → v3
+```
+
+### Q5. What does the audit trail record?
+
+At minimum:
+
+```text
+policy
+version
+action
+actor
+timestamp
+```
+
+### Q6. Why separate the policy store and audit store?
+
+They represent different concerns:
+
+```text
+PolicyStore → policy state and history
+AuditStore  → security/event history
+```
+
+Separating them makes the design easier to evolve toward durable storage, centralized logging, or an event-driven architecture.
 
 ---
 
-# 33. Overall Interview Explanation
+# 31. Current Authorization Engine Evolution
 
-A concise explanation of the current authorization-engine project:
+The project has now evolved beyond the original RBAC-only implementation:
 
-> I built a lightweight Python authorization engine and evolved it across three authorization models: RBAC, ABAC, and ReBAC. RBAC evaluates explicit permissions through role assignments, ABAC evaluates subject, resource, action, and environmental attributes, and ReBAC evaluates relationships between subjects, groups, and specific resources. Each model follows a default-deny approach and is independently tested with positive and negative authorization scenarios. The project currently has 29 automated pytest tests covering the three models.
+```text
+RBAC
+  |
+  +-- Role-based authorization
+  |
+  v
+ABAC
+  |
+  +-- Attribute/context-based authorization
+  |
+  v
+ReBAC
+  |
+  +-- Relationship-based authorization
+  |
+  v
+Policy Management
+  |
+  +-- Versioned policies
+  +-- Historical versions
+  +-- Rollback
+  |
+  v
+Audit
+  |
+  +-- Policy lifecycle events
+  +-- Actor attribution
+  +-- Timestamped history
+```
 
----
+The architecture now demonstrates multiple major authorization models plus policy lifecycle governance.
 
-# 34. Current Deliverables
+## Current Build Evidence
 
-| Authorization Model | Implementation | Documentation | Tests | Status |
-|---|---|---|---:|---|
-| RBAC | `engine.py`, `models.py` | `docs/rbac.md` | 9 | **Complete** |
-| ABAC | `abac_engine.py`, `abac_models.py` | `docs/abac.md` | 7 | **Complete** |
-| ReBAC | `rebac_engine.py`, `rebac_models.py`, `rebac_store.py` | `docs/rebac.md` | 13 | **Complete** |
-| Combined engine | All modules | `README.md` | 29 | **Complete** |
+```text
+RBAC tests:                 9 passed
+ABAC tests:                 7 passed
+ReBAC tests:               13 passed
+Audit store tests:          5 passed
+Policy manager tests:       8 passed
+Policy store tests:        11 passed
+                            -----------
+Total:                     53 passed
+```
 
 Final verification:
 
@@ -2197,35 +1847,96 @@ Final verification:
 pytest
 ```
 
-Expected:
+Expected/current result for this completed build:
 
 ```text
-tests	est_abac.py .......       [ 24%]
-tests	est_rbac.py .........     [ 55%]
-tests	est_rebac.py ............. [100%]
-
-29 passed
+53 passed in 0.13s
 ```
 
-The authorization-engine project now demonstrates:
+---
+
+# 32. Updated Project Structure
+
+The current implementation is:
 
 ```text
-RBAC
-+
-ABAC
-+
-ReBAC
-+
-Default Deny
-+
-Explicit Authorization
-+
-Resource-specific Access
-+
-Context-aware Access
-+
-Relationship-based Sharing
-+
-Automated Security Testing
+authorization-engine/
+│
+├── docs/
+│   └── rbac.md
+│
+├── src/
+│   └── authorization_engine/
+│       ├── __init__.py
+│       ├── models.py
+│       ├── engine.py
+│       ├── abac_models.py
+│       ├── abac_engine.py
+│       ├── rebac_models.py
+│       ├── rebac_store.py
+│       ├── rebac_engine.py
+│       ├── policy_models.py
+│       ├── policy_store.py
+│       ├── audit_models.py
+│       ├── audit_store.py
+│       └── policy_manager.py
+│
+├── tests/
+│   ├── test_rbac.py
+│   ├── test_abac.py
+│   ├── test_rebac.py
+│   ├── test_policy_store.py
+│   ├── test_audit_store.py
+│   └── test_policy_manager.py
+│
+└── pyproject.toml
 ```
 
+This structure reflects the current implementation rather than the original RBAC-only v0.1 structure.
+
+---
+
+# 33. Overall Project Status
+
+```text
+┌───────────────────────────────────────────────┐
+│         AUTHORIZATION ENGINE                  │
+├───────────────────────────────────────────────┤
+│                                               │
+│  RBAC                         COMPLETE        │
+│  ABAC                         COMPLETE        │
+│  ReBAC                        COMPLETE        │
+│  Policy Versioning            COMPLETE        │
+│  Audit Trail                  COMPLETE        │
+│  Historical Rollback          COMPLETE        │
+│                                               │
+│  Automated Tests:             53 passed       │
+│                                               │
+│  STATUS: BUILD COMPLETE                      │
+│                                               │
+└───────────────────────────────────────────────┘
+```
+
+The project now provides a compact implementation demonstrating:
+
+```text
+Authorization Models
+        |
+        +-- RBAC
+        +-- ABAC
+        +-- ReBAC
+        |
+        v
+Policy Management
+        |
+        +-- Versioning
+        +-- Historical state
+        +-- Rollback
+        |
+        v
+Security Governance
+        |
+        +-- Audit trail
+        +-- Actor attribution
+        +-- Timestamped events
+```
