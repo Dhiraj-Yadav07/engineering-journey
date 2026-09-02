@@ -1940,3 +1940,552 @@ Security Governance
         +-- Actor attribution
         +-- Timestamped events
 ```
+---
+
+# 34. Failure-Mode Security Testing
+
+The authorization engine has been extended with a dedicated failure-mode security lab covering **fail-open behavior, fail-closed behavior, stale policy detection, and stale-policy protection**.
+
+This work focuses on an important authorization-engineering principle:
+
+> Authorization security depends not only on the policy decision, but also on what happens when policy state is unavailable or no longer current.
+
+## 34.1 Failure-Mode Scope
+
+The lab covers:
+
+```text
+Policy unavailable
+        |
+        +-- Fail-open  -> ALLOW  (security risk)
+        |
+        +-- Fail-closed -> DENY  (secure default)
+
+Policy stale
+        |
+        +-- Cached policy may produce obsolete ALLOW
+        |
+        +-- Staleness detection
+        |
+        +-- Stale policy -> DENY
+```
+
+The failure-mode implementation is isolated from the existing RBAC, ABAC, ReBAC, policy-store, policy-manager, and audit-store implementations.
+
+## 34.2 Project Components
+
+The lab adds:
+
+```text
+src/
+└── authorization_engine/
+    ├── failure_modes.py
+    └── stale_policy.py
+
+tests/
+├── test_failure_modes.py
+└── test_stale_policy.py
+
+docs/
+└── failure-modes.md
+```
+
+### `failure_modes.py`
+
+Provides:
+
+```text
+PolicyUnavailableError
+authorize_fail_open()
+authorize_fail_closed()
+```
+
+`PolicyUnavailableError` distinguishes a policy-source failure from a normal policy DENY.
+
+### `stale_policy.py`
+
+Provides:
+
+```text
+SimplePolicy
+authorize_with_policy()
+is_policy_stale()
+authorize_with_stale_policy_protection()
+```
+
+The policy contains a version number and the set of users it allows.
+
+---
+
+## 34.3 Fail-Open Scenario
+
+A fail-open authorization path returns ALLOW when the policy source is unavailable.
+
+```text
+Policy unavailable
+       |
+       v
+   FAIL OPEN
+       |
+       v
+     ALLOW
+```
+
+This is security-sensitive because an infrastructure failure can become an access-control failure.
+
+The lab verifies:
+
+```text
+Policy ALLOW       -> ALLOW
+Policy DENY        -> DENY
+Policy unavailable -> ALLOW
+```
+
+The third behavior is intentionally demonstrated as the unsafe fail-open condition.
+
+---
+
+## 34.4 Fail-Closed Scenario
+
+A fail-closed authorization path returns DENY when the policy source is unavailable.
+
+```text
+Policy unavailable
+       |
+       v
+  FAIL CLOSED
+       |
+       v
+      DENY
+```
+
+The lab verifies:
+
+```text
+Policy ALLOW       -> ALLOW
+Policy DENY        -> DENY
+Policy unavailable -> DENY
+```
+
+This provides the safer authorization default because access is not granted when the applicable policy cannot be established.
+
+---
+
+## 34.5 Stale Policy Scenario
+
+The lab models two policy versions:
+
+```text
+Policy v1:
+    alice -> ALLOW
+    bob   -> ALLOW
+
+Policy v2:
+    alice -> ALLOW
+    bob   -> DENY
+```
+
+Version 2 represents the current policy after Bob's access has been removed.
+
+If an authorization request uses cached policy version 1 after version 2 becomes current:
+
+```text
+Current policy: v2
+Bob should be:  DENY
+
+Cached policy:  v1
+Bob receives:   ALLOW
+```
+
+Therefore, stale authorization state can produce an obsolete authorization decision.
+
+The tests explicitly demonstrate:
+
+```text
+v1 + bob -> True
+v2 + bob -> False
+```
+
+This proves that the same authorization request can produce different decisions depending on the policy version used.
+
+---
+
+## 34.6 Stale Policy Detection
+
+The lab treats a cached policy as stale when:
+
+```text
+cached_policy.version < current_version
+```
+
+Example:
+
+```text
+Cached version:  1
+Current version: 2
+                 |
+                 v
+              STALE
+```
+
+The implementation provides:
+
+```python
+is_policy_stale(
+    cached_policy,
+    current_version,
+)
+```
+
+The tests verify that:
+
+- version 1 is stale when version 2 is current;
+- version 2 is not stale when version 2 is current.
+
+---
+
+## 34.7 Stale-Policy Protection
+
+Detecting stale policy state is not sufficient. The authorization layer must define the behavior after staleness is detected.
+
+The protection flow is:
+
+```text
+             Check policy version
+                     |
+              +------+------+
+              |             |
+            STALE        CURRENT
+              |             |
+              v             v
+            DENY       Evaluate policy
+                            |
+                       +----+----+
+                       |         |
+                     ALLOW      DENY
+```
+
+The lab implements:
+
+```python
+authorize_with_stale_policy_protection(
+    policy,
+    user,
+    current_version,
+)
+```
+
+When the supplied policy is stale, the function returns `False` immediately.
+
+This means that even if a stale policy would have allowed the user, the authorization layer refuses to use that obsolete decision.
+
+### Security property
+
+```text
+Stale policy
+     +
+Potentially permissive cached decision
+     |
+     v
+   DENY
+```
+
+This establishes a deny-by-default response to stale authorization state.
+
+---
+
+## 34.8 Security Findings
+
+### Finding 1 — Fail-open authorization is unsafe during policy-source failure
+
+If policy retrieval fails and authorization defaults to ALLOW, an infrastructure failure can result in unauthorized access.
+
+**Risk:** Access may be granted without a successful policy evaluation.
+
+**Preferred posture:** Fail closed.
+
+### Finding 2 — Stale policy can preserve revoked access
+
+A cached policy can continue granting access after a newer policy version has revoked that access.
+
+**Risk:** Revoked permissions may remain effective until stale policy state is refreshed or invalidated.
+
+**Preferred posture:** Detect policy-version mismatch and reject authorization using stale state.
+
+### Finding 3 — Policy freshness is part of authorization correctness
+
+Authorization correctness depends not only on evaluating a policy but also on evaluating the correct policy version.
+
+**Security implication:** Policy availability and freshness are security properties of the authorization system.
+
+---
+
+## 34.9 Recommended Controls
+
+A production authorization system should consider:
+
+1. **Fail closed when policy evaluation cannot be trusted.**
+2. **Track policy versions or revisions.**
+3. **Detect cached-policy version mismatches.**
+4. **Reject authorization requests when required policy state is stale.**
+5. **Invalidate or refresh authorization caches after policy changes.**
+6. **Record policy version information in authorization/audit events where appropriate.**
+7. **Monitor policy-store availability and cache freshness.**
+8. **Define explicit operational behavior for policy-store outages rather than relying on implicit defaults.**
+
+The exact implementation should depend on the consistency, availability, and latency requirements of the production authorization architecture.
+
+---
+
+## 34.10 Failure-Mode Test Evidence
+
+### Fail-open / Fail-closed
+
+Command:
+
+```powershell
+pytest tests/test_failure_modes.py
+```
+
+Result:
+
+```text
+6 passed in 0.05s
+```
+
+The six tests cover:
+
+```text
+✓ Fail-open preserves ALLOW
+✓ Fail-open preserves DENY
+✓ Fail-open allows when policy is unavailable
+✓ Fail-closed preserves ALLOW
+✓ Fail-closed preserves DENY
+✓ Fail-closed denies when policy is unavailable
+```
+
+### Stale Policy
+
+Command:
+
+```powershell
+pytest tests/test_stale_policy.py
+```
+
+Result:
+
+```text
+9 passed in 0.06s
+```
+
+The nine tests cover:
+
+```text
+✓ Current policy behavior
+✓ Stale policy behavior
+✓ Different decisions between stale and current policy
+✓ Stale-version detection
+✓ Current-version validation
+✓ Stale-policy protection
+✓ Current-policy ALLOW
+✓ Current-policy DENY
+✓ Protection against an otherwise-permissive stale policy
+```
+
+---
+
+## 34.11 Full Regression Evidence
+
+After adding the failure-mode lab, the complete project test suite was executed:
+
+```powershell
+pytest
+```
+
+Result:
+
+```text
+collected 68 items
+
+68 passed in 0.16s
+```
+
+Current test distribution:
+
+| Area | Tests |
+|---|---:|
+| RBAC | 9 |
+| ABAC | 7 |
+| ReBAC | 13 |
+| Policy Store | 11 |
+| Policy Manager | 8 |
+| Audit Store | 5 |
+| Fail-open / Fail-closed | 6 |
+| Stale Policy | 9 |
+| **Total** | **68** |
+
+This confirms that the failure-mode security lab was added without causing regressions in the existing authorization-engine functionality.
+
+---
+
+## 34.12 Architecture Implication
+
+The authorization architecture now needs to consider policy availability and freshness in addition to normal authorization evaluation.
+
+```text
+                Policy Store
+                     |
+                     v
+              Policy Version
+                     |
+                     v
+               Policy Cache
+                     |
+              freshness check
+                     |
+          +----------+----------+
+          |                     |
+        STALE                 CURRENT
+          |                     |
+          v                     v
+        DENY              Policy evaluation
+                                |
+                         +------+------+
+                         |             |
+                         v             v
+                       ALLOW          DENY
+```
+
+This extends the authorization model from:
+
+```text
+Subject → Policy → Decision
+```
+
+to a more realistic operational model:
+
+```text
+Policy State
+     |
+     +-- Availability
+     |
+     +-- Version
+     |
+     +-- Freshness
+     |
+     v
+Authorization Decision
+```
+
+---
+
+## 34.13 Relationship to Existing Policy Versioning and Audit
+
+The failure-mode lab builds directly on the project's existing policy-versioning capability.
+
+Policy versioning provides historical policy state:
+
+```text
+v1 → v2 → v3
+```
+
+The stale-policy lab adds the runtime security question:
+
+```text
+Is the policy being used current?
+```
+
+Together:
+
+```text
+Policy Management
+      |
+      +-- Version history
+      +-- Historical retrieval
+      +-- Rollback
+      |
+      v
+Authorization Runtime
+      |
+      +-- Policy freshness
+      +-- Stale-policy detection
+      +-- Fail-closed behavior
+      |
+      v
+Secure Authorization Decision
+```
+
+The audit trail can provide additional evidence of policy changes, while the failure-mode controls address what happens when runtime authorization state is unavailable or stale.
+
+---
+
+## 34.14 Deliverable Status
+
+| Item | Status |
+|---|---|
+| Fail-open behavior test | Complete |
+| Fail-closed behavior test | Complete |
+| Policy-unavailable scenario | Complete |
+| Stale policy scenario | Complete |
+| Policy-version staleness detection | Complete |
+| Stale-policy protection | Complete |
+| Failure-mode test suite | Complete |
+| Failure-mode documentation | Complete |
+| Full regression verification | **68 passed** |
+| Failure-mode security lab | **Complete** |
+
+Detailed evidence is available in:
+
+```text
+docs/failure-modes.md
+```
+
+---
+
+## 34.15 Interview Explanation
+
+A concise explanation of this security lab:
+
+> I tested authorization failure semantics for policy-store outages and stale policy state. I demonstrated that fail-open behavior can turn policy unavailability into an ALLOW decision, while fail-closed behavior safely returns DENY. I then modeled versioned policies where a stale cached policy could continue granting access after a newer policy revoked it. I added policy-version freshness checks and stale-policy protection so obsolete policy state results in DENY. The complete project regression suite passes with 68 tests.
+
+---
+
+## 34.16 Current Build Evidence
+
+The project now has automated evidence covering:
+
+```text
+RBAC
+  └── Role-based authorization
+
+ABAC
+  └── Attribute/context-based authorization
+
+ReBAC
+  └── Relationship-based authorization
+
+Policy Management
+  ├── Versioned policies
+  ├── Historical versions
+  └── Rollback
+
+Audit
+  ├── Policy lifecycle events
+  ├── Actor attribution
+  └── Timestamped history
+
+Failure Modes
+  ├── Fail-open behavior
+  ├── Fail-closed behavior
+  ├── Policy unavailability
+  ├── Stale policy detection
+  └── Stale-policy protection
+```
+
+Final verification:
+
+```text
+68 / 68 tests passed
+```
+
+This represents the current verified state of the authorization-engine project.
