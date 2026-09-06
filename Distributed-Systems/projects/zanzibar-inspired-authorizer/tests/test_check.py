@@ -6,7 +6,7 @@ from zanzibar_authz.expressions import (
     TupleToUserset,
     Union,
 )
-from zanzibar_authz.models import TupleRecord
+from zanzibar_authz.models import ConsistencyToken, TupleRecord
 from zanzibar_authz.namespace import Namespace, RelationRule
 from zanzibar_authz.store import TupleStore
 
@@ -476,3 +476,111 @@ def test_folder_viewer_access_is_inherited_by_document() -> None:
         object_id="design",
         relation="viewer",
     )
+
+def test_tuple_store_filters_by_snapshot_version() -> None:
+    store = TupleStore()
+
+    store.add(
+        TupleRecord(
+            object_type="document",
+            object_id="design",
+            relation="viewer",
+            subject_type="user",
+            subject_id="bob",
+            valid_from=100,
+            valid_to=105,
+        )
+    )
+
+    assert len(
+        store.find(
+            object_type="document",
+            object_id="design",
+            relation="viewer",
+            snapshot_version=100,
+        )
+    ) == 1
+
+    assert len(
+        store.find(
+            object_type="document",
+            object_id="design",
+            relation="viewer",
+            snapshot_version=104,
+        )
+    ) == 1
+
+    assert len(
+        store.find(
+            object_type="document",
+            object_id="design",
+            relation="viewer",
+            snapshot_version=105,
+        )
+    ) == 0
+
+def test_check_uses_requested_snapshot_version() -> None:
+    store = TupleStore()
+
+    # Bob is a viewer starting at version 100.
+    store.add(
+        TupleRecord(
+            object_type="document",
+            object_id="design",
+            relation="viewer",
+            subject_type="user",
+            subject_id="bob",
+            valid_from=100,
+            valid_to=105,
+        )
+    )
+
+    namespace = Namespace(
+        name="document",
+        relations={
+            "viewer": RelationRule(
+                "viewer",
+                expression=Direct("viewer"),
+            ),
+        },
+    )
+
+    engine = CheckEngine(
+        store=store,
+        namespaces={"document": namespace},
+    )
+
+    # At version 100, Bob should still have access.
+    assert engine.check(
+        subject_type="user",
+        subject_id="bob",
+        object_type="document",
+        object_id="design",
+        relation="viewer",
+        consistency_token=ConsistencyToken(snapshot_version=100),
+    )
+
+    # At version 104, Bob still has access.
+    assert engine.check(
+        subject_type="user",
+        subject_id="bob",
+        object_type="document",
+        object_id="design",
+        relation="viewer",
+        consistency_token=ConsistencyToken(snapshot_version=104),
+    )
+
+    # At version 105, Bob has been removed.
+    assert not engine.check(
+        subject_type="user",
+        subject_id="bob",
+        object_type="document",
+        object_id="design",
+        relation="viewer",
+        consistency_token=ConsistencyToken(snapshot_version=105),
+    )
+
+def test_consistency_token_contains_snapshot_version() -> None:
+    token = ConsistencyToken(snapshot_version=105)
+
+    assert token.snapshot_version == 105
