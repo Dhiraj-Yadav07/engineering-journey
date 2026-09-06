@@ -3,6 +3,7 @@ from zanzibar_authz.expressions import (
     Direct,
     Exclusion,
     Intersection,
+    TupleToUserset,
     Union,
 )
 from zanzibar_authz.models import TupleRecord
@@ -26,6 +27,13 @@ def document_namespace() -> Namespace:
                 "direct_viewer",
                 expression=Direct("direct_viewer"),
             ),
+            "parent_viewer": RelationRule(
+                "parent_viewer",
+                expression=TupleToUserset(
+                    tupleset_relation="parent",
+                    computed_userset_relation="viewer",
+                ),
+            ),
             "viewer": RelationRule(
                 "viewer",
                 expression=Union(
@@ -33,6 +41,10 @@ def document_namespace() -> Namespace:
                         Direct("direct_viewer"),
                         Direct("editor"),
                         Direct("owner"),
+                        TupleToUserset(
+                            tupleset_relation="parent",
+                            computed_userset_relation="viewer",
+                        ),
                     )
                 ),
             ),
@@ -401,4 +413,66 @@ def test_exclusion_denies_suspended_user() -> None:
         object_type="document",
         object_id="design",
         relation="allowed",
+    )
+
+def test_folder_viewer_access_is_inherited_by_document() -> None:
+    store = TupleStore()
+
+    # Alice is a member of Engineering.
+    store.add(
+        TupleRecord(
+            object_type="group",
+            object_id="engineering",
+            relation="member",
+            subject_type="user",
+            subject_id="alice",
+        )
+    )
+
+    # Engineering members can view the folder.
+    store.add(
+        TupleRecord(
+            object_type="folder",
+            object_id="engineering-docs",
+            relation="viewer",
+            subject_type="group",
+            subject_id="engineering",
+            subject_relation="member",
+        )
+    )
+
+    # The document belongs to the folder.
+    store.add(
+        TupleRecord(
+            object_type="document",
+            object_id="design",
+            relation="parent",
+            subject_type="folder",
+            subject_id="engineering-docs",
+        )
+    )
+
+    engine = CheckEngine(
+        store=store,
+        namespaces={
+            "document": document_namespace(),
+            "group": group_namespace(),
+            "folder": Namespace(
+                name="folder",
+                relations={
+                    "viewer": RelationRule(
+                        "viewer",
+                        expression=Direct("viewer"),
+                    ),
+                },
+            ),
+        },
+    )
+
+    assert engine.check(
+        subject_type="user",
+        subject_id="alice",
+        object_type="document",
+        object_id="design",
+        relation="viewer",
     )

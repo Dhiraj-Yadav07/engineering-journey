@@ -1,4 +1,10 @@
-from .expressions import Direct, Exclusion, Intersection, Union
+from .expressions import (
+    Direct,
+    Exclusion,
+    Intersection,
+    TupleToUserset,
+    Union,
+)
 from .namespace import Namespace
 from .store import TupleStore
 
@@ -81,6 +87,17 @@ class CheckEngine:
                 visited=visited,
                 depth=depth,
             )
+
+        if isinstance(expression, TupleToUserset):
+            return self._evaluate_tuple_to_userset(
+                expression=expression,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                object_type=object_type,
+                object_id=object_id,
+                visited=visited,
+                depth=depth,
+            )    
 
         if isinstance(expression, Union):
             return any(
@@ -186,5 +203,45 @@ class CheckEngine:
                     depth=depth + 1,
                 ):
                     return True
+
+        return False
+
+    def _evaluate_tuple_to_userset(
+        self,
+        expression: TupleToUserset,
+        subject_type: str,
+        subject_id: str,
+        object_type: str,
+        object_id: str,
+        visited: set[tuple[str, str, str, str, str]],
+        depth: int,
+    ) -> bool:
+        tuples = self._store.find(
+            object_type,
+            object_id,
+            expression.tupleset_relation,
+        )
+
+        for tuple_record in tuples:
+            # Tuple-to-userset can point directly to another object:
+            #
+            # document:design#parent@folder:engineering-docs
+            #
+            # It can also point to a userset:
+            #
+            # document:design#viewer@group:engineering#member
+            #
+            # In both cases, evaluate the computed relation on
+            # the referenced object.
+            if self.check(
+                subject_type=subject_type,
+                subject_id=subject_id,
+                object_type=tuple_record.subject_type,
+                object_id=tuple_record.subject_id,
+                relation=expression.computed_userset_relation,
+                visited=visited.copy(),
+                depth=depth + 1,
+            ):
+                return True
 
         return False
