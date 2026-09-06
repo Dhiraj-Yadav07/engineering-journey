@@ -6,16 +6,19 @@ class TupleStore:
         self._tuples: list[TupleRecord] = []
 
     def add(self, tuple_record: TupleRecord) -> None:
-        if tuple_record not in self._tuples:
-            self._tuples.append(tuple_record)
+        if tuple_record in self._tuples:
+            return
+
+        self._tuples.append(tuple_record)
 
     def find(
         self,
         object_type: str,
         object_id: str,
         relation: str,
+        snapshot_version: int | None = None,
     ) -> list[TupleRecord]:
-        return [
+        matches = [
             tuple_record
             for tuple_record in self._tuples
             if (
@@ -23,4 +26,13 @@ class TupleStore:
                 and tuple_record.object_id == object_id
                 and tuple_record.relation == relation
             )
+        ]
+
+        if snapshot_version is None:
+            return matches
+
+        return [
+            tuple_record
+            for tuple_record in matches
+            if tuple_record.is_visible_at(snapshot_version)
         ]
