@@ -1,0 +1,19 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100   295  100   295    0     0    595      0 --:--:-- --:--:-- --:--:--   597
+HTTP/2 403 
+date: Mon, 07 Sep 2026 18:10:34 GMT
+content-type: text/html; charset=UTF-8
+server: Google Frontend
+content-length: 295
+
+
+<html><head>
+<meta http-equiv="content-type" content="text/html;charset=utf-8">
+<title>403 Forbidden</title>
+</head>
+<body text=#000000 bgcolor=#ffffff>
+<h1>Error: Forbidden</h1>
+<h2>Your client does not have permission to get URL <code>/</code> from this server.</h2>
+<h2></h2>
+</body></html>

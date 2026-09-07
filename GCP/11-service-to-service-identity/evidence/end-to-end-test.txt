@@ -1,0 +1,3 @@
+Caller invoked receiver.
+Receiver HTTP status: 200
+Receiver response: Hello from receiver-service

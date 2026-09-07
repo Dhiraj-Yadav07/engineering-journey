@@ -1,0 +1,8 @@
+metadata:
+  name: receiver-service
+spec:
+  template:
+    spec:
+      serviceAccountName: receiver-sa@dev-project-506017.iam.gserviceaccount.com
+status:
+  url: https://receiver-service-f22ffgdhqq-el.a.run.app

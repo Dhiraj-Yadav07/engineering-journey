@@ -1,0 +1,8 @@
+metadata:
+  name: caller-service
+spec:
+  template:
+    spec:
+      serviceAccountName: caller-sa@dev-project-506017.iam.gserviceaccount.com
+status:
+  url: https://caller-service-f22ffgdhqq-el.a.run.app

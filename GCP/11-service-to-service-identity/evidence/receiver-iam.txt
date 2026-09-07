@@ -1,0 +1,6 @@
+bindings:
+- members:
+  - serviceAccount:caller-sa@dev-project-506017.iam.gserviceaccount.com
+  role: roles/run.invoker
+etag: BwZa6Ekf9xg=
+version: 1
