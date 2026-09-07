@@ -1,0 +1,29 @@
+name: GCP Workload Identity Federation Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test-gcp-wif:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud with WIF
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: "projects/229836775022/locations/global/workloadIdentityPools/github-wif-lab/providers/github-oidc"
+
+      - name: Verify federated identity
+        run: |
+          gcloud auth list
+
+      - name: Read test object from Cloud Storage
+        run: |
+          gcloud storage cat gs://dev-project-506017-github-wif-11878/wif-test.txt
