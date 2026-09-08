@@ -1,0 +1,22 @@
+=== Cloud KMS Envelope Encryption Demo ===
+KMS key: projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key
+
+1. Generated fresh 256-bit DEK locally.
+2. Encrypted plaintext with AES-256-GCM.
+3. Wrapped DEK using Cloud KMS.
+
+=== Encrypted Envelope ===
+{
+  "kms_key": "projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key",
+  "wrapped_dek": "<redacted>",
+  "nonce": "<redacted>",
+  "aad": "a21zLWxhYjp2MQ==",
+  "ciphertext": "<redacted>"
+}
+
+4. Unwrapped DEK using Cloud KMS.
+5. Decrypted ciphertext locally with recovered DEK.
+
+Recovered plaintext: Confidential data for the KMS envelope encryption lab.
+
+RESULT: Envelope encryption round trip SUCCESS

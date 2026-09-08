@@ -1,0 +1,6 @@
+bindings:
+- members:
+  - serviceAccount:kms-demo-sa@dev-project-506017.iam.gserviceaccount.com
+  role: roles/cloudkms.cryptoKeyEncrypterDecrypter
+etag: BwZa895xv9E=
+version: 1

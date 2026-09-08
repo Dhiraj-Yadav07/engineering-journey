@@ -1,0 +1,5 @@
+NAME: projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key/cryptoKeyVersions/1
+STATE: ENABLED
+
+NAME: projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key/cryptoKeyVersions/2
+STATE: ENABLED

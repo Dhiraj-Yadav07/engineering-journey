@@ -1,0 +1,14 @@
+=== KMS KEY VERSIONS ===
+NAME: projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key/cryptoKeyVersions/1
+STATE: ENABLED
+
+NAME: projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key/cryptoKeyVersions/2
+STATE: ENABLED
+
+=== PRIMARY KEY VERSION ===
+projects/dev-project-506017/locations/asia-south1/keyRings/app-keyring/cryptoKeys/data-encryption-key/cryptoKeyVersions/2
+
+=== ROTATION DECRYPTION RESULT ===
+Previously encrypted envelope created using KMS version 1.
+KMS version 2 is now primary.
+Previously encrypted envelope successfully decrypted after rotation.
