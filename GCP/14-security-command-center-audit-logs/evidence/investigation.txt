@@ -1,0 +1,137 @@
+GCP 14 - Security Command Center + Cloud Audit Logs
+Evidence: investigation.txt
+
+Investigation procedure and outcome
+-----------------------------------
+
+1. Identify the Security Command Center finding.
+
+Finding:
+  Exfiltration: BigQuery Data to Google Drive
+
+State:
+  ACTIVE
+
+Severity:
+  LOW
+
+Detection source:
+  Event Threat Detection
+
+
+2. Identify the affected resource.
+
+Resource:
+  dev-project-506017:scc_exfil_lab.customer_data
+
+Service:
+  bigquery.googleapis.com
+
+Resource type:
+  google.cloud.bigquery.Table
+
+Location:
+  asia-south1
+
+
+3. Identify the principal associated with the activity.
+
+Principal:
+  dhirajy076@gmail.com
+
+
+4. Correlate the finding to Cloud Audit Logs.
+
+Log:
+  cloudaudit.googleapis.com/data_access
+
+Insert ID:
+  8drb6leg2nvc
+
+Timestamp:
+  2026-09-10T06:48:08.325076Z
+
+Service:
+  bigquery.googleapis.com
+
+Method:
+  google.cloud.bigquery.v2.JobService.InsertJob
+
+Audit metadata:
+  type.googleapis.com/google.cloud.audit.BigQueryAuditMetadata
+
+
+5. Identify the exfiltration destination.
+
+Destination:
+  Google Drive
+
+Collection:
+  home
+
+Collection type:
+  GDRIVE
+
+Object:
+  bq-results-20260910-064729-1789022873386.csv
+
+Total exfiltrated bytes:
+  150
+
+
+6. Correlate the BigQuery job.
+
+Job ID:
+  job_kCqeWcBouGngAfX_hL8EXWNZ9Mps
+
+Job location:
+  asia-south1
+
+Job project:
+  dev-project-506017
+
+
+7. Review threat classification.
+
+MITRE ATT&CK tactic:
+  EXFILTRATION
+
+MITRE ATT&CK techniques:
+  EXFILTRATION_OVER_WEB_SERVICE
+  EXFILTRATION_TO_CLOUD_STORAGE
+
+
+8. Detection architecture validated.
+
+BigQuery
+  |
+  | Save query results to Google Drive
+  v
+Google Drive
+  |
+  | Cloud Audit Logs / DATA_ACCESS
+  v
+BigQueryAuditMetadata
+  |
+  v
+Event Threat Detection
+  |
+  v
+Security Command Center
+  |
+  v
+Exfiltration: BigQuery Data to Google Drive
+  |
+  v
+Investigation / Response
+
+
+9. Investigation conclusion.
+
+The lab successfully demonstrated an end-to-end detection pipeline. A BigQuery
+query-result extraction to Google Drive generated a Cloud Audit Logs DATA_ACCESS
+event containing BigQueryAuditMetadata. Event Threat Detection analyzed the
+activity and generated an ACTIVE, LOW-severity Security Command Center threat
+finding. The finding correlated the principal, affected BigQuery table,
+Cloud Logging entry, Google Drive destination, exfiltrated byte count,
+BigQuery job, and MITRE ATT&CK exfiltration classification.

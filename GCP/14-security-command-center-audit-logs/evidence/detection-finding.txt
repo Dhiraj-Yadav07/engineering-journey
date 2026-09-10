@@ -1,0 +1,124 @@
+GCP 14 - Security Command Center + Cloud Audit Logs
+Evidence: detection-finding.txt
+
+Validated Security Command Center finding
+-----------------------------------------
+Category:
+  Exfiltration: BigQuery Data to Google Drive
+
+State:
+  ACTIVE
+
+Severity:
+  LOW
+
+Event time:
+  2026-09-10T06:48:12.527Z
+
+Create time:
+  2026-09-10T06:48:12.941Z
+
+Parent display name:
+  Event Threat Detection
+
+Finding class:
+  THREAT
+
+Detection metadata
+------------------
+Indicator:
+  audit_log
+
+Rule name:
+  big_query_exfil
+
+Sub-rule:
+  exfil_to_google_drive
+
+Technique:
+  google_drive_exfiltration
+
+Principal
+---------
+dhirajy076@gmail.com
+
+Affected resource
+-----------------
+Resource:
+  //bigquery.googleapis.com/projects/dev-project-506017/datasets/scc_exfil_lab/tables/customer_data
+
+Display name:
+  dev-project-506017:scc_exfil_lab.customer_data
+
+Resource type:
+  google.cloud.bigquery.Table
+
+Exfiltration evidence
+---------------------
+Total exfiltrated bytes:
+  150
+
+Destination:
+  Google Drive
+
+Collection name:
+  home
+
+Collection type:
+  GDRIVE
+
+Object:
+  bq-results-20260910-064729-1789022873386/bq-results-20260910-064729-1789022873386.csv
+
+Original URI:
+  gdrive://home/bq-results-20260910-064729-1789022873386/bq-results-20260910-064729-1789022873386.csv
+
+Correlated Cloud Audit Log
+--------------------------
+Log ID:
+  cloudaudit.googleapis.com/data_access
+
+Insert ID:
+  8drb6leg2nvc
+
+Log timestamp:
+  2026-09-10T06:48:08.325076Z
+
+Resource container:
+  projects/dev-project-506017
+
+BigQuery job
+------------
+Job ID:
+  job_kCqeWcBouGngAfX_hL8EXWNZ9Mps
+
+Location:
+  asia-south1
+
+Project:
+  dev-project-506017
+
+Source data observed by finding
+-------------------------------
+BigQuery source:
+  projects/dev-project-506017/datasets/scc_exfil_lab/tables/customer_data
+
+MITRE ATT&CK
+------------
+Primary tactic:
+  EXFILTRATION
+
+Primary techniques:
+  EXFILTRATION_OVER_WEB_SERVICE
+  EXFILTRATION_TO_CLOUD_STORAGE
+
+Affected GCP project
+--------------------
+Project number:
+  229836775022
+
+Organization:
+  865766687674
+
+Folder:
+  980279307111 (Non-Production)

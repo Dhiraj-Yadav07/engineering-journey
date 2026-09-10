@@ -1,0 +1,58 @@
+GCP 14 - Security Command Center + Cloud Audit Logs
+Evidence: audit-log-event.txt
+
+Environment
+-----------
+Project ID: dev-project-506017
+Project number: 229836775022
+Organization ID: 865766687674
+Region: asia-south1
+
+Successful detection scenario
+-----------------------------
+A BigQuery query result from:
+  projects/dev-project-506017/datasets/scc_exfil_lab/tables/customer_data
+
+was saved to Google Drive.
+
+Cloud Audit Logs evidence
+-------------------------
+Log:
+  projects/dev-project-506017/logs/cloudaudit.googleapis.com/data_access
+
+Timestamp:
+  2026-09-10T06:48:08.325076Z
+
+Principal:
+  dhirajy076@gmail.com
+
+Service:
+  bigquery.googleapis.com
+
+Method:
+  google.cloud.bigquery.v2.JobService.InsertJob
+
+Audit metadata:
+  type.googleapis.com/google.cloud.audit.BigQueryAuditMetadata
+
+The successful SCC detection correlated to this DATA_ACCESS audit log.
+
+Negative test previously performed
+-----------------------------------
+A separate cross-project BigQuery COPY produced a DATA_ACCESS audit event:
+
+Job ID:
+  bqjob_r295f4cede1efb66a_000001a08a068f8b_1
+
+Operation:
+  COPY
+
+Source:
+  projects/dev-project-506017/datasets/scc_exfil_lab/tables/customer_data
+
+Destination:
+  projects/test-project-506017/datasets/scc_exfil_target/tables/copied_customer_data_1789022077
+
+The COPY generated audit evidence but did not generate the target SCC
+BigQuery-to-Google-Drive exfiltration finding. This was retained as a
+negative/contrast test.
